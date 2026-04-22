@@ -112,6 +112,34 @@ export type CommandModuleState = {
   commands: CommandRecord[]
 }
 
+export type CredentialRecord = {
+  id: string
+  service: string
+  url: string
+  account: string
+  password: string
+  extra: string[]
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type CredentialSaveInput = {
+  id?: string
+  service: string
+  url?: string
+  account?: string
+  password?: string
+  extra?: string[]
+}
+
+export type CredentialModuleState = {
+  storageFile: string
+  updatedAt: string
+  secretEncoding: 'plain' | 'electron-safe-storage'
+  credentials: CredentialRecord[]
+}
+
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
@@ -121,4 +149,7 @@ export type BridgeApi = {
   saveCommandTab: (input: CommandTabSaveInput) => Promise<CommandTab>
   saveCommand: (input: CommandSaveInput) => Promise<CommandRecord>
   deleteCommand: (commandId: string) => Promise<{ ok: boolean }>
+  getCredentialsState: () => Promise<CredentialModuleState>
+  saveCredential: (input: CredentialSaveInput) => Promise<CredentialRecord>
+  deleteCredential: (credentialId: string) => Promise<{ ok: boolean }>
 }

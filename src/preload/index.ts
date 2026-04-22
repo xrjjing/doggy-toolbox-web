@@ -4,7 +4,8 @@ import type {
   AiStartChatInput,
   BridgeApi,
   CommandSaveInput,
-  CommandTabSaveInput
+  CommandTabSaveInput,
+  CredentialSaveInput
 } from '../shared/ipc-contract'
 
 const api: BridgeApi = {
@@ -21,7 +22,10 @@ const api: BridgeApi = {
   getCommandsState: () => ipcRenderer.invoke('commands:get-state'),
   saveCommandTab: (input: CommandTabSaveInput) => ipcRenderer.invoke('commands:save-tab', input),
   saveCommand: (input: CommandSaveInput) => ipcRenderer.invoke('commands:save-command', input),
-  deleteCommand: (commandId: string) => ipcRenderer.invoke('commands:delete-command', commandId)
+  deleteCommand: (commandId: string) => ipcRenderer.invoke('commands:delete-command', commandId),
+  getCredentialsState: () => ipcRenderer.invoke('credentials:get-state'),
+  saveCredential: (input: CredentialSaveInput) => ipcRenderer.invoke('credentials:save', input),
+  deleteCredential: (credentialId: string) => ipcRenderer.invoke('credentials:delete', credentialId)
 }
 
 contextBridge.exposeInMainWorld('doggy', api)

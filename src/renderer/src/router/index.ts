@@ -4,6 +4,7 @@ import ToolsView from '@renderer/views/ToolsView.vue'
 import AiChatView from '@renderer/views/AiChatView.vue'
 import MigrationPlanView from '@renderer/views/MigrationPlanView.vue'
 import CommandsView from '@renderer/views/CommandsView.vue'
+import CredentialsView from '@renderer/views/CredentialsView.vue'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -22,6 +23,11 @@ export const router = createRouter({
       path: '/commands',
       name: 'commands',
       component: CommandsView
+    },
+    {
+      path: '/credentials',
+      name: 'credentials',
+      component: CredentialsView
     },
     {
       path: '/ai',

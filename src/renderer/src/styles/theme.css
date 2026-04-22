@@ -342,6 +342,11 @@ textarea {
   gap: 18px;
 }
 
+.credentials-shell {
+  display: grid;
+  gap: 18px;
+}
+
 .commands-sidebar,
 .commands-main,
 .commands-toolbar,
@@ -380,6 +385,12 @@ textarea {
   gap: 16px;
 }
 
+.credentials-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .command-card .chip-list {
   margin-bottom: 12px;
 }
@@ -395,6 +406,35 @@ textarea {
   border: 1px solid rgba(15, 118, 110, 0.16);
   border-radius: 18px;
   background: rgba(240, 253, 250, 0.8);
+}
+
+.credential-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.credential-fields > div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(54, 42, 31, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.credential-fields strong {
+  display: block;
+  margin-top: 4px;
+  word-break: break-word;
+}
+
+.credential-extra {
+  margin-bottom: 14px;
+}
+
+.credentials-meta-card p {
+  word-break: break-all;
 }
 
 .command-empty-card {
@@ -506,6 +546,8 @@ textarea {
   .tool-workbench,
   .tool-output-grid,
   .commands-grid,
+  .credentials-grid,
+  .credential-fields,
   .commands-toolbar-row {
     grid-template-columns: 1fr;
   }

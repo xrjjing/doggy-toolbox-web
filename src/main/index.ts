@@ -1,19 +1,38 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
 import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { AiBridgeService } from './services/ai-bridge'
 import { CommandService } from './services/command-service'
+import {
+  CredentialService,
+  plainCredentialSecretCodec,
+  type CredentialSecretCodec
+} from './services/credential-service'
 import { getRuntimeInfo } from './utils/runtime'
 import type {
   AiStartChatInput,
   CommandSaveInput,
-  CommandTabSaveInput
+  CommandTabSaveInput,
+  CredentialSaveInput
 } from '../shared/ipc-contract'
 
 let mainWindow: BrowserWindow | null = null
 let aiBridge: AiBridgeService
 let commandService: CommandService
+let credentialService: CredentialService
+
+function createCredentialSecretCodec(): CredentialSecretCodec {
+  if (!safeStorage.isEncryptionAvailable()) {
+    return plainCredentialSecretCodec
+  }
+
+  return {
+    encoding: 'electron-safe-storage',
+    encode: (value: string) => safeStorage.encryptString(value).toString('base64'),
+    decode: (value: string) => safeStorage.decryptString(Buffer.from(value, 'base64'))
+  }
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -54,6 +73,7 @@ function createWindow(): void {
 function registerIpc(): void {
   aiBridge = new AiBridgeService(() => mainWindow)
   commandService = new CommandService(app.getPath('userData'))
+  credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
 
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
   ipcMain.handle('ai:start-chat', (_event, input: AiStartChatInput) => aiBridge.startChat(input))
@@ -67,6 +87,13 @@ function registerIpc(): void {
   )
   ipcMain.handle('commands:delete-command', (_event, commandId: string) =>
     commandService.deleteCommand(commandId)
+  )
+  ipcMain.handle('credentials:get-state', () => credentialService.getState())
+  ipcMain.handle('credentials:save', (_event, input: CredentialSaveInput) =>
+    credentialService.saveCredential(input)
+  )
+  ipcMain.handle('credentials:delete', (_event, credentialId: string) =>
+    credentialService.deleteCredential(credentialId)
   )
 }
 
