@@ -32,7 +32,11 @@ const runtimeCards = computed(
 const migrationGroups = [
   { name: '项目基线', done: 70, text: 'Electron Vite、Vue、Naive UI、IPC、Actions' },
   { name: '纯前端工具', done: 10, text: '优先迁移 Base64、URL、UUID、JSON、Hash' },
-  { name: '本地数据模块', done: 0, text: '命令、凭证、Prompt、节点、HTTP 集合' },
+  {
+    name: '本地数据模块',
+    done: 22,
+    text: '命令管理已接入 appData JSON repository，继续迁移凭证与 Prompt'
+  },
   { name: 'AI Bridge', done: 25, text: 'SDK 依赖、配置检测、统一流式事件协议' }
 ]
 </script>

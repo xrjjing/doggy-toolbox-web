@@ -13,11 +13,14 @@
 ## 当前状态
 
 ```text
-Phase 0：新仓基线进行中
+Phase 2：本地持久化模块推进中
 ├── Electron Vite + Vue + TypeScript 工程骨架
 ├── Naive UI 桌面工具台布局
 ├── IPC 合约与本机运行时检测
 ├── Codex / Claude Code SDK bridge 初始入口
+├── P1 首批纯前端工具工作台
+├── appData JSON repository
+├── 命令管理页面与本地持久化
 ├── GitHub Actions 打包工作流
 └── README / LICENSE / AGENTS / CLAUDE / 待办台账
 ```
@@ -46,6 +49,15 @@ Vue Renderer -> preload 安全桥 -> Electron Main -> AI Bridge -> 本机 SDK / 
 - Claude：通过 `@anthropic-ai/claude-agent-sdk` 读取本机 Claude Code 配置。
 - Renderer 不保存 API Key，也不直接发 AI HTTPS 请求。
 - UI 只消费统一的 `start / delta / thinking / tool / usage / done / error` 事件协议。
+
+## 本地持久化原则
+
+P2 阶段先不引入 native SQLite 依赖，避免 Electron 打包链路过早被原生模块阻塞。当前已落地：
+
+- Main Process 统一管理 `app.getPath('userData')` 下的数据目录。
+- `storage/commands.json` 使用 JSON repository 原子写入。
+- Renderer 只通过 preload 暴露的 IPC API 读写命令数据。
+- 命令管理支持分组、新增、编辑、删除、搜索和复制。
 
 ## 开发
 
@@ -85,6 +97,7 @@ doggy-toolbox-web/
 ├── src/preload/          # 安全暴露给 Renderer 的 IPC API
 ├── src/renderer/         # Vue 3 + TypeScript + Naive UI 前端
 ├── src/shared/           # Main / Preload / Renderer 共享类型
+├── tests/                # 工具算法与本地服务测试
 ├── resources/            # 图标与打包资源
 ├── .github/workflows/    # GitHub Actions 打包
 ├── AGENTS.md             # 从旧项目复制

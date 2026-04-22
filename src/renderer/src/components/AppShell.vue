@@ -8,6 +8,7 @@ import {
   HomeOutline,
   ListCircleOutline,
   MoonOutline,
+  TerminalOutline,
   SunnyOutline
 } from '@vicons/ionicons5'
 import { useAppStore } from '@renderer/stores/app'
@@ -19,6 +20,7 @@ const appStore = useAppStore()
 const navItems = [
   { path: '/', label: '总览', icon: HomeOutline },
   { path: '/tools', label: '工具迁移', icon: GridOutline },
+  { path: '/commands', label: '命令管理', icon: TerminalOutline },
   { path: '/ai', label: 'AI Bridge', icon: ChatbubblesOutline },
   { path: '/plan', label: '排期', icon: ListCircleOutline }
 ]

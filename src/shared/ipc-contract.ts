@@ -70,9 +70,55 @@ export type AiStartChatResult = {
   sessionId: string
 }
 
+export type CommandTab = {
+  id: string
+  name: string
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type CommandRecord = {
+  id: string
+  title: string
+  description: string
+  lines: string[]
+  tabId: string
+  tags: string[]
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type CommandTabSaveInput = {
+  id?: string
+  name: string
+}
+
+export type CommandSaveInput = {
+  id?: string
+  title: string
+  description?: string
+  lines: string[]
+  tabId?: string
+  tags?: string[]
+}
+
+export type CommandModuleState = {
+  storageFile: string
+  defaultTabId: string
+  updatedAt: string
+  tabs: CommandTab[]
+  commands: CommandRecord[]
+}
+
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
   aiCancelChat: (sessionId: string) => Promise<{ ok: boolean }>
   onAiStreamEvent: (handler: (event: AiStreamEvent) => void) => () => void
+  getCommandsState: () => Promise<CommandModuleState>
+  saveCommandTab: (input: CommandTabSaveInput) => Promise<CommandTab>
+  saveCommand: (input: CommandSaveInput) => Promise<CommandRecord>
+  deleteCommand: (commandId: string) => Promise<{ ok: boolean }>
 }
