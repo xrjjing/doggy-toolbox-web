@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NSwitch, NTag } from 'naive-ui'
 import {
   ChatbubblesOutline,
+  CloudUploadOutline,
   KeyOutline,
   LibraryOutline,
   GridOutline,
@@ -25,6 +26,7 @@ const navItems = [
   { path: '/commands', label: '命令管理', icon: TerminalOutline },
   { path: '/credentials', label: '凭证管理', icon: KeyOutline },
   { path: '/prompts', label: 'Prompt 模板', icon: LibraryOutline },
+  { path: '/backup', label: '备份恢复', icon: CloudUploadOutline },
   { path: '/ai', label: 'AI Bridge', icon: ChatbubblesOutline },
   { path: '/plan', label: '排期', icon: ListCircleOutline }
 ]

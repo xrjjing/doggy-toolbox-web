@@ -177,6 +177,27 @@ export class CredentialService {
     return { ok: removed }
   }
 
+  async exportBackupSection(): Promise<Pick<CredentialModuleState, 'credentials'>> {
+    const state = await this.readState()
+    return {
+      credentials: this.toPlainRecords(state)
+    }
+  }
+
+  async restoreBackupSection(
+    section: Pick<CredentialModuleState, 'credentials'>
+  ): Promise<CredentialModuleState> {
+    const restored = this.fromPlainRecords({
+      version: 1,
+      updatedAt: nowIso(),
+      secretEncoding: this.secretCodec.encoding,
+      credentials: section.credentials ?? []
+    })
+    await ensureAppDataLayout(this.paths)
+    await this.repository.write(this.normalizeState(restored))
+    return this.getState()
+  }
+
   private async readState(): Promise<StoredCredentialState> {
     await ensureAppDataLayout(this.paths)
     const raw = await this.repository.read()

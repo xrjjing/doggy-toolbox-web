@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AiStreamEvent,
   AiStartChatInput,
+  BackupExportInput,
+  BackupImportInput,
   BridgeApi,
   CommandSaveInput,
   CommandTabSaveInput,
@@ -43,7 +45,9 @@ const api: BridgeApi = {
     ipcRenderer.invoke('prompts:toggle-favorite', templateId),
   usePromptTemplate: (input: PromptTemplateUseInput) =>
     ipcRenderer.invoke('prompts:use-template', input),
-  parsePromptVariables: (content: string) => ipcRenderer.invoke('prompts:parse-variables', content)
+  parsePromptVariables: (content: string) => ipcRenderer.invoke('prompts:parse-variables', content),
+  exportBackup: (input?: BackupExportInput) => ipcRenderer.invoke('backup:export', input),
+  importBackup: (input: BackupImportInput) => ipcRenderer.invoke('backup:import', input)
 }
 
 contextBridge.exposeInMainWorld('doggy', api)

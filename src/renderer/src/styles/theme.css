@@ -336,6 +336,13 @@ textarea {
   margin-bottom: 20px;
 }
 
+.backup-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
 .commands-shell {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
@@ -351,6 +358,17 @@ textarea {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
+}
+
+.backup-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.backup-options-card .n-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
 }
 
 .commands-sidebar,
@@ -593,6 +611,10 @@ textarea {
 
   .commands-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .backup-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .commands-shell,

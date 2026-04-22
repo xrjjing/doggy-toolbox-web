@@ -542,6 +542,28 @@ export class PromptService {
     return parsePromptVariables(content)
   }
 
+  async exportBackupSection(): Promise<Pick<PromptModuleState, 'categories' | 'templates'>> {
+    const state = await this.readState()
+    return {
+      categories: [...state.categories],
+      templates: [...state.templates]
+    }
+  }
+
+  async restoreBackupSection(
+    section: Pick<PromptModuleState, 'categories' | 'templates'>
+  ): Promise<PromptModuleState> {
+    const restored = normalizeState({
+      version: 1,
+      updatedAt: nowIso(),
+      categories: section.categories ?? [],
+      templates: section.templates ?? []
+    })
+    await ensureAppDataLayout(this.paths)
+    await this.repository.write(restored)
+    return this.toModuleState(restored)
+  }
+
   private async readState(): Promise<StoredPromptState> {
     await ensureAppDataLayout(this.paths)
     const raw = await this.repository.read()

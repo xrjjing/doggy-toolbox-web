@@ -274,6 +274,28 @@ export class CommandService {
     return { ok: removed }
   }
 
+  async exportBackupSection(): Promise<Pick<CommandModuleState, 'tabs' | 'commands'>> {
+    const state = await this.readState()
+    return {
+      tabs: [...state.tabs],
+      commands: [...state.commands]
+    }
+  }
+
+  async restoreBackupSection(
+    section: Pick<CommandModuleState, 'tabs' | 'commands'>
+  ): Promise<CommandModuleState> {
+    const restored = normalizeState({
+      version: 1,
+      updatedAt: nowIso(),
+      tabs: section.tabs ?? [],
+      commands: section.commands ?? []
+    })
+    await ensureAppDataLayout(this.paths)
+    await this.repository.write(restored)
+    return this.toModuleState(restored)
+  }
+
   private async readState(): Promise<StoredCommandState> {
     await ensureAppDataLayout(this.paths)
     const raw = await this.repository.read()

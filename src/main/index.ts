@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { AiBridgeService } from './services/ai-bridge'
+import { BackupService } from './services/backup-service'
 import { CommandService } from './services/command-service'
 import {
   CredentialService,
@@ -13,6 +14,8 @@ import { PromptService } from './services/prompt-service'
 import { getRuntimeInfo } from './utils/runtime'
 import type {
   AiStartChatInput,
+  BackupExportInput,
+  BackupImportInput,
   CommandSaveInput,
   CommandTabSaveInput,
   CredentialSaveInput,
@@ -26,6 +29,7 @@ let aiBridge: AiBridgeService
 let commandService: CommandService
 let credentialService: CredentialService
 let promptService: PromptService
+let backupService: BackupService
 
 function createCredentialSecretCodec(): CredentialSecretCodec {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -80,6 +84,7 @@ function registerIpc(): void {
   commandService = new CommandService(app.getPath('userData'))
   credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
   promptService = new PromptService(app.getPath('userData'))
+  backupService = new BackupService({ commandService, credentialService, promptService })
 
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
   ipcMain.handle('ai:start-chat', (_event, input: AiStartChatInput) => aiBridge.startChat(input))
@@ -122,6 +127,12 @@ function registerIpc(): void {
   )
   ipcMain.handle('prompts:parse-variables', (_event, content: string) =>
     promptService.parseVariables(content)
+  )
+  ipcMain.handle('backup:export', (_event, input?: BackupExportInput) =>
+    backupService.exportBackup(input)
+  )
+  ipcMain.handle('backup:import', (_event, input: BackupImportInput) =>
+    backupService.importBackup(input)
   )
 }
 

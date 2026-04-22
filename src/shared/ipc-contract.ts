@@ -204,6 +204,44 @@ export type PromptModuleState = {
   templates: PromptTemplate[]
 }
 
+export type BackupSectionKey = 'commands' | 'credentials' | 'prompts'
+
+export type BackupSummary = {
+  commands: number
+  commandTabs: number
+  credentials: number
+  promptCategories: number
+  promptTemplates: number
+}
+
+export type BackupDocument = {
+  version: '1.0'
+  app: 'doggy-toolbox-web'
+  exportedAt: string
+  sections: BackupSectionKey[]
+  summary: BackupSummary
+  data: {
+    commands?: Pick<CommandModuleState, 'tabs' | 'commands'>
+    credentials?: Pick<CredentialModuleState, 'credentials'>
+    prompts?: Pick<PromptModuleState, 'categories' | 'templates'>
+  }
+}
+
+export type BackupExportInput = {
+  sections?: BackupSectionKey[]
+}
+
+export type BackupImportInput = {
+  json: string
+  sections?: BackupSectionKey[]
+}
+
+export type BackupImportResult = {
+  importedAt: string
+  sections: BackupSectionKey[]
+  summary: BackupSummary
+}
+
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
@@ -224,4 +262,6 @@ export type BridgeApi = {
   togglePromptFavorite: (templateId: string) => Promise<{ isFavorite: boolean }>
   usePromptTemplate: (input: PromptTemplateUseInput) => Promise<PromptTemplateUseResult>
   parsePromptVariables: (content: string) => Promise<PromptVariable[]>
+  exportBackup: (input?: BackupExportInput) => Promise<BackupDocument>
+  importBackup: (input: BackupImportInput) => Promise<BackupImportResult>
 }

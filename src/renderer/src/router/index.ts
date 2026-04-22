@@ -6,6 +6,7 @@ import MigrationPlanView from '@renderer/views/MigrationPlanView.vue'
 import CommandsView from '@renderer/views/CommandsView.vue'
 import CredentialsView from '@renderer/views/CredentialsView.vue'
 import PromptsView from '@renderer/views/PromptsView.vue'
+import BackupView from '@renderer/views/BackupView.vue'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -34,6 +35,11 @@ export const router = createRouter({
       path: '/prompts',
       name: 'prompts',
       component: PromptsView
+    },
+    {
+      path: '/backup',
+      name: 'backup',
+      component: BackupView
     },
     {
       path: '/ai',
