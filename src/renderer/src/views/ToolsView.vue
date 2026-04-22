@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { NCard, NGrid, NGridItem, NTag } from 'naive-ui'
+import ToolWorkbenchView from '@renderer/features/tools/ToolWorkbenchView.vue'
 
 const groups = [
   {
@@ -47,4 +48,6 @@ const groups = [
       </NCard>
     </NGridItem>
   </NGrid>
+
+  <ToolWorkbenchView />
 </template>
