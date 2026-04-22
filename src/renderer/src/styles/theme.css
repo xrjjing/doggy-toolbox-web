@@ -365,6 +365,11 @@ textarea {
   gap: 18px;
 }
 
+.legacy-analysis {
+  display: grid;
+  gap: 14px;
+}
+
 .backup-options-card .n-checkbox-group {
   display: flex;
   flex-wrap: wrap;

@@ -7,6 +7,7 @@ import CommandsView from '@renderer/views/CommandsView.vue'
 import CredentialsView from '@renderer/views/CredentialsView.vue'
 import PromptsView from '@renderer/views/PromptsView.vue'
 import BackupView from '@renderer/views/BackupView.vue'
+import LegacyImportPage from '@renderer/views/LegacyImportView.vue'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -40,6 +41,11 @@ export const router = createRouter({
       path: '/backup',
       name: 'backup',
       component: BackupView
+    },
+    {
+      path: '/legacy-import',
+      name: 'legacy-import',
+      component: LegacyImportPage
     },
     {
       path: '/ai',

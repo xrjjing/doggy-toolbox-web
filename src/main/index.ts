@@ -11,6 +11,7 @@ import {
   type CredentialSecretCodec
 } from './services/credential-service'
 import { PromptService } from './services/prompt-service'
+import { LegacyImportService } from './services/legacy-import-service'
 import { getRuntimeInfo } from './utils/runtime'
 import type {
   AiStartChatInput,
@@ -19,6 +20,7 @@ import type {
   CommandSaveInput,
   CommandTabSaveInput,
   CredentialSaveInput,
+  LegacyImportInput,
   PromptCategorySaveInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput
@@ -30,6 +32,7 @@ let commandService: CommandService
 let credentialService: CredentialService
 let promptService: PromptService
 let backupService: BackupService
+let legacyImportService: LegacyImportService
 
 function createCredentialSecretCodec(): CredentialSecretCodec {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -85,6 +88,11 @@ function registerIpc(): void {
   credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
   promptService = new PromptService(app.getPath('userData'))
   backupService = new BackupService({ commandService, credentialService, promptService })
+  legacyImportService = new LegacyImportService({
+    commandService,
+    credentialService,
+    promptService
+  })
 
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
   ipcMain.handle('ai:start-chat', (_event, input: AiStartChatInput) => aiBridge.startChat(input))
@@ -133,6 +141,12 @@ function registerIpc(): void {
   )
   ipcMain.handle('backup:import', (_event, input: BackupImportInput) =>
     backupService.importBackup(input)
+  )
+  ipcMain.handle('legacy:analyze-import', (_event, json: string) =>
+    legacyImportService.analyze(json)
+  )
+  ipcMain.handle('legacy:import', (_event, input: LegacyImportInput) =>
+    legacyImportService.import(input)
   )
 }
 

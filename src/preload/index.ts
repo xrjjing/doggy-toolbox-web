@@ -8,6 +8,7 @@ import type {
   CommandSaveInput,
   CommandTabSaveInput,
   CredentialSaveInput,
+  LegacyImportInput,
   PromptCategorySaveInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput
@@ -47,7 +48,9 @@ const api: BridgeApi = {
     ipcRenderer.invoke('prompts:use-template', input),
   parsePromptVariables: (content: string) => ipcRenderer.invoke('prompts:parse-variables', content),
   exportBackup: (input?: BackupExportInput) => ipcRenderer.invoke('backup:export', input),
-  importBackup: (input: BackupImportInput) => ipcRenderer.invoke('backup:import', input)
+  importBackup: (input: BackupImportInput) => ipcRenderer.invoke('backup:import', input),
+  analyzeLegacyImport: (json: string) => ipcRenderer.invoke('legacy:analyze-import', json),
+  importLegacyData: (input: LegacyImportInput) => ipcRenderer.invoke('legacy:import', input)
 }
 
 contextBridge.exposeInMainWorld('doggy', api)

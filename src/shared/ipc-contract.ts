@@ -242,6 +242,29 @@ export type BackupImportResult = {
   summary: BackupSummary
 }
 
+export type LegacyImportSourceKind = 'doggy-toolbox-backup' | 'doggy-toolbox-prompt-export'
+
+export type LegacyImportAnalysis = {
+  sourceKind: LegacyImportSourceKind
+  sourceLabel: string
+  availableSections: BackupSectionKey[]
+  summary: BackupSummary
+  warnings: string[]
+}
+
+export type LegacyImportInput = {
+  json: string
+  sections?: BackupSectionKey[]
+}
+
+export type LegacyImportResult = {
+  importedAt: string
+  sourceKind: LegacyImportSourceKind
+  sections: BackupSectionKey[]
+  summary: BackupSummary
+  warnings: string[]
+}
+
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
@@ -264,4 +287,6 @@ export type BridgeApi = {
   parsePromptVariables: (content: string) => Promise<PromptVariable[]>
   exportBackup: (input?: BackupExportInput) => Promise<BackupDocument>
   importBackup: (input: BackupImportInput) => Promise<BackupImportResult>
+  analyzeLegacyImport: (json: string) => Promise<LegacyImportAnalysis>
+  importLegacyData: (input: LegacyImportInput) => Promise<LegacyImportResult>
 }

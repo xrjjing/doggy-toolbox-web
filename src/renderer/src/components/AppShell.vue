@@ -5,6 +5,7 @@ import { NButton, NIcon, NSwitch, NTag } from 'naive-ui'
 import {
   ChatbubblesOutline,
   CloudUploadOutline,
+  DownloadOutline,
   KeyOutline,
   LibraryOutline,
   GridOutline,
@@ -27,6 +28,7 @@ const navItems = [
   { path: '/credentials', label: '凭证管理', icon: KeyOutline },
   { path: '/prompts', label: 'Prompt 模板', icon: LibraryOutline },
   { path: '/backup', label: '备份恢复', icon: CloudUploadOutline },
+  { path: '/legacy-import', label: '旧数据导入', icon: DownloadOutline },
   { path: '/ai', label: 'AI Bridge', icon: ChatbubblesOutline },
   { path: '/plan', label: '排期', icon: ListCircleOutline }
 ]

@@ -34,8 +34,8 @@ const migrationGroups = [
   { name: '纯前端工具', done: 10, text: '优先迁移 Base64、URL、UUID、JSON、Hash' },
   {
     name: '本地数据模块',
-    done: 72,
-    text: '命令、凭证、Prompt 与统一备份恢复已接入 appData JSON repository'
+    done: 86,
+    text: '命令、凭证、Prompt、统一备份和旧数据导入已接入 appData JSON repository'
   },
   { name: 'AI Bridge', done: 25, text: 'SDK 依赖、配置检测、统一流式事件协议' }
 ]
