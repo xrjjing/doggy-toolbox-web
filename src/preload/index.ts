@@ -5,7 +5,10 @@ import type {
   BridgeApi,
   CommandSaveInput,
   CommandTabSaveInput,
-  CredentialSaveInput
+  CredentialSaveInput,
+  PromptCategorySaveInput,
+  PromptTemplateSaveInput,
+  PromptTemplateUseInput
 } from '../shared/ipc-contract'
 
 const api: BridgeApi = {
@@ -25,7 +28,22 @@ const api: BridgeApi = {
   deleteCommand: (commandId: string) => ipcRenderer.invoke('commands:delete-command', commandId),
   getCredentialsState: () => ipcRenderer.invoke('credentials:get-state'),
   saveCredential: (input: CredentialSaveInput) => ipcRenderer.invoke('credentials:save', input),
-  deleteCredential: (credentialId: string) => ipcRenderer.invoke('credentials:delete', credentialId)
+  deleteCredential: (credentialId: string) =>
+    ipcRenderer.invoke('credentials:delete', credentialId),
+  getPromptState: () => ipcRenderer.invoke('prompts:get-state'),
+  savePromptCategory: (input: PromptCategorySaveInput) =>
+    ipcRenderer.invoke('prompts:save-category', input),
+  deletePromptCategory: (categoryId: string) =>
+    ipcRenderer.invoke('prompts:delete-category', categoryId),
+  savePromptTemplate: (input: PromptTemplateSaveInput) =>
+    ipcRenderer.invoke('prompts:save-template', input),
+  deletePromptTemplate: (templateId: string) =>
+    ipcRenderer.invoke('prompts:delete-template', templateId),
+  togglePromptFavorite: (templateId: string) =>
+    ipcRenderer.invoke('prompts:toggle-favorite', templateId),
+  usePromptTemplate: (input: PromptTemplateUseInput) =>
+    ipcRenderer.invoke('prompts:use-template', input),
+  parsePromptVariables: (content: string) => ipcRenderer.invoke('prompts:parse-variables', content)
 }
 
 contextBridge.exposeInMainWorld('doggy', api)

@@ -9,18 +9,23 @@ import {
   plainCredentialSecretCodec,
   type CredentialSecretCodec
 } from './services/credential-service'
+import { PromptService } from './services/prompt-service'
 import { getRuntimeInfo } from './utils/runtime'
 import type {
   AiStartChatInput,
   CommandSaveInput,
   CommandTabSaveInput,
-  CredentialSaveInput
+  CredentialSaveInput,
+  PromptCategorySaveInput,
+  PromptTemplateSaveInput,
+  PromptTemplateUseInput
 } from '../shared/ipc-contract'
 
 let mainWindow: BrowserWindow | null = null
 let aiBridge: AiBridgeService
 let commandService: CommandService
 let credentialService: CredentialService
+let promptService: PromptService
 
 function createCredentialSecretCodec(): CredentialSecretCodec {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -74,6 +79,7 @@ function registerIpc(): void {
   aiBridge = new AiBridgeService(() => mainWindow)
   commandService = new CommandService(app.getPath('userData'))
   credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
+  promptService = new PromptService(app.getPath('userData'))
 
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
   ipcMain.handle('ai:start-chat', (_event, input: AiStartChatInput) => aiBridge.startChat(input))
@@ -94,6 +100,28 @@ function registerIpc(): void {
   )
   ipcMain.handle('credentials:delete', (_event, credentialId: string) =>
     credentialService.deleteCredential(credentialId)
+  )
+  ipcMain.handle('prompts:get-state', () => promptService.getState())
+  ipcMain.handle('prompts:save-category', (_event, input: PromptCategorySaveInput) =>
+    promptService.saveCategory(input)
+  )
+  ipcMain.handle('prompts:delete-category', (_event, categoryId: string) =>
+    promptService.deleteCategory(categoryId)
+  )
+  ipcMain.handle('prompts:save-template', (_event, input: PromptTemplateSaveInput) =>
+    promptService.saveTemplate(input)
+  )
+  ipcMain.handle('prompts:delete-template', (_event, templateId: string) =>
+    promptService.deleteTemplate(templateId)
+  )
+  ipcMain.handle('prompts:toggle-favorite', (_event, templateId: string) =>
+    promptService.toggleFavorite(templateId)
+  )
+  ipcMain.handle('prompts:use-template', (_event, input: PromptTemplateUseInput) =>
+    promptService.useTemplate(input)
+  )
+  ipcMain.handle('prompts:parse-variables', (_event, content: string) =>
+    promptService.parseVariables(content)
   )
 }
 

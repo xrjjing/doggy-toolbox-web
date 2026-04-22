@@ -347,6 +347,12 @@ textarea {
   gap: 18px;
 }
 
+.prompts-shell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+}
+
 .commands-sidebar,
 .commands-main,
 .commands-toolbar,
@@ -389,6 +395,20 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.prompts-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.prompts-toolbar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
 }
 
 .command-card .chip-list {
@@ -435,6 +455,39 @@ textarea {
 
 .credentials-meta-card p {
   word-break: break-all;
+}
+
+.prompt-preview {
+  max-height: 220px;
+  margin: 12px 0 14px;
+  padding: 16px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #10231f;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 18px;
+  background: rgba(240, 253, 250, 0.8);
+}
+
+.prompt-editor-modal {
+  width: min(1040px, calc(100vw - 32px));
+}
+
+.prompt-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.48fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.prompt-result-modal {
+  width: min(900px, calc(100vw - 32px));
+}
+
+.prompt-hint {
+  padding: 12px;
+  border: 1px dashed rgba(154, 52, 18, 0.24);
+  border-radius: 16px;
 }
 
 .command-empty-card {
@@ -543,10 +596,14 @@ textarea {
   }
 
   .commands-shell,
+  .prompts-shell,
   .tool-workbench,
   .tool-output-grid,
   .commands-grid,
   .credentials-grid,
+  .prompts-grid,
+  .prompts-toolbar-row,
+  .prompt-editor-grid,
   .credential-fields,
   .commands-toolbar-row {
     grid-template-columns: 1fr;

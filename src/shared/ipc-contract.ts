@@ -140,6 +140,70 @@ export type CredentialModuleState = {
   credentials: CredentialRecord[]
 }
 
+export type PromptVariable = {
+  name: string
+  type: 'text' | 'select'
+  defaultValue: string
+  options: string[]
+}
+
+export type PromptCategory = {
+  id: string
+  name: string
+  icon: string
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type PromptTemplate = {
+  id: string
+  title: string
+  content: string
+  categoryId: string
+  description: string
+  tags: string[]
+  variables: PromptVariable[]
+  isFavorite: boolean
+  isSystem: boolean
+  usageCount: number
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type PromptCategorySaveInput = {
+  id?: string
+  name: string
+  icon?: string
+}
+
+export type PromptTemplateSaveInput = {
+  id?: string
+  title: string
+  content: string
+  categoryId?: string
+  description?: string
+  tags?: string[]
+}
+
+export type PromptTemplateUseInput = {
+  templateId: string
+  values?: Record<string, string>
+}
+
+export type PromptTemplateUseResult = {
+  content: string
+  template: PromptTemplate
+}
+
+export type PromptModuleState = {
+  storageFile: string
+  updatedAt: string
+  categories: PromptCategory[]
+  templates: PromptTemplate[]
+}
+
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
@@ -152,4 +216,12 @@ export type BridgeApi = {
   getCredentialsState: () => Promise<CredentialModuleState>
   saveCredential: (input: CredentialSaveInput) => Promise<CredentialRecord>
   deleteCredential: (credentialId: string) => Promise<{ ok: boolean }>
+  getPromptState: () => Promise<PromptModuleState>
+  savePromptCategory: (input: PromptCategorySaveInput) => Promise<PromptCategory>
+  deletePromptCategory: (categoryId: string) => Promise<{ ok: boolean }>
+  savePromptTemplate: (input: PromptTemplateSaveInput) => Promise<PromptTemplate>
+  deletePromptTemplate: (templateId: string) => Promise<{ ok: boolean }>
+  togglePromptFavorite: (templateId: string) => Promise<{ isFavorite: boolean }>
+  usePromptTemplate: (input: PromptTemplateUseInput) => Promise<PromptTemplateUseResult>
+  parsePromptVariables: (content: string) => Promise<PromptVariable[]>
 }
