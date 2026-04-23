@@ -13,7 +13,7 @@
 ## 当前状态
 
 ```text
-Phase 2：本地持久化模块已完成，P3 / P4 并行推进
+Phase 5：P3 / P4 主功能已完成，Release 收尾中
 ├── Electron Vite + Vue + TypeScript 工程骨架
 ├── Naive UI 桌面工具台布局
 ├── IPC 合约与本机运行时检测
@@ -115,6 +115,23 @@ npm run lint
 npm run build
 ```
 
+## 使用说明
+
+启动桌面端后，左侧导航进入各模块：
+
+- `总览`：查看 Electron 运行时、本机数据目录、Codex / Claude Code 配置检测结果。
+- `工具`：使用 Base64、URL、UUID、Hash、JSON、文本、Unicode、进制和命名转换；工具结果可直接交给本机 AI 做复核。
+- `HTTP 集合`：管理集合、请求和环境变量；支持发送请求、请求历史、批量测试，以及 cURL / HTTPie / Postman / OpenAPI / Apifox 格式转换。
+- `命令` / `凭证` / `Prompts` / `节点`：使用本地 JSON repository 持久化常用资料。
+- `备份恢复`：导出或覆盖恢复命令、凭证、Prompt、节点和 HTTP 集合数据。
+- `AI SDK Bridge`：直接选择 Codex SDK 或 Claude Code SDK 发起本机会话，并回看历史、usage、工具事件和 provider session id。
+
+截图约定：
+
+- 截图后放到 `docs/screenshots/`。
+- README 建议至少补 `dashboard.png`、`tools-ai-assist.png`、`http-collections.png`、`ai-bridge.png` 四张。
+- 当前仓库先保留文字使用说明，不伪造截图文件。
+
 ## 打包
 
 本机打包：
@@ -129,6 +146,7 @@ GitHub 打包：
 
 - 推送 `v*` tag 会触发 Release 构建。
 - 也可以在 GitHub Actions 页面手动触发 `Build and Release`。
+- Release notes 可按 `docs/release-notes-template.md` 填写；Actions 会上传 macOS / Windows 平台产物。
 
 ## 目录结构
 
