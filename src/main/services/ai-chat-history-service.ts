@@ -13,6 +13,10 @@ import type {
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
 import { JsonFileRepository } from './json-repository'
 
+/**
+ * AI 历史文件的真实落盘结构。
+ * IPC 合约暴露给 renderer 的是裁剪后的状态，而内部结构允许后续做版本迁移和自愈修复。
+ */
 type StoredAiChatHistoryState = {
   version: number
   updatedAt: string
@@ -136,6 +140,10 @@ function createDefaultState(): StoredAiChatHistoryState {
   }
 }
 
+/**
+ * 所有历史读入都会先做归一化。
+ * 目的是把旧版本文件、手工编辑痕迹或异常中断留下的不完整结构修成当前最小可用形态。
+ */
 function normalizeState(
   raw: StoredAiChatHistoryState | null | undefined
 ): StoredAiChatHistoryState {
@@ -175,6 +183,14 @@ function normalizeState(
   }
 }
 
+/**
+ * AI 历史服务负责把流式事件沉淀成可回放的会话快照。
+ *
+ * 为什么单独拆这一层：
+ * 1. provider bridge 只关心把 SDK 事件翻译出来，不关心持久化细节。
+ * 2. renderer 即使丢失窗口，也能从本地历史恢复会话结果。
+ * 3. 所有清洗、兼容和排序逻辑集中在这里，页面层无需做脏数据防御。
+ */
 export class AiChatHistoryService {
   private readonly paths
   private readonly repository
@@ -229,6 +245,7 @@ export class AiChatHistoryService {
     await this.updateState((state) => ({
       ...state,
       updatedAt: timestamp,
+      // 同一 sessionId 只保留一条记录，避免重复建会后列表里出现重影。
       sessions: [record, ...state.sessions.filter((session) => session.id !== record.id)]
     }))
 
@@ -270,6 +287,7 @@ export class AiChatHistoryService {
         if (event.type === 'start') {
           return {
             ...session,
+            // start 阶段只补 runtime 快照，不重写建会时已经记录的 messages/title。
             phase: 'starting',
             runtime: event.runtime,
             updatedAt: timestamp
@@ -303,6 +321,7 @@ export class AiChatHistoryService {
         }
 
         if (event.type === 'tool') {
+          // tool 用 toolId 覆盖更新，保证 start/done/error 落在同一条工具摘要上。
           const nextTools = [
             ...session.tools.filter((tool) => tool.id !== event.toolId),
             {
@@ -335,6 +354,7 @@ export class AiChatHistoryService {
         if (event.type === 'session-ref') {
           return {
             ...session,
+            // provider session id 常常晚于 start 事件产生，因此在这里补写到 runtime 快照里。
             runtime: {
               ...(session.runtime ?? {
                 transport: session.provider === 'claude-code' ? 'claude-agent-sdk' : 'codex-sdk',
@@ -385,6 +405,7 @@ export class AiChatHistoryService {
           ? {
               ...session,
               status,
+              // status 与 phase 分开保存，便于 UI 同时展示“最终结局”和“最后流式阶段”。
               phase: status === 'done' ? 'completed' : status === 'error' ? 'failed' : 'cancelled',
               updatedAt: timestamp,
               errorMessage: sanitizeText(errorMessage) || undefined
@@ -399,6 +420,7 @@ export class AiChatHistoryService {
     const raw = await this.repository.read()
     const normalized = normalizeState(raw)
 
+    // 如果发现文件结构已经偏离规范，立即自愈写回，减少重复修复成本。
     if (JSON.stringify(raw) !== JSON.stringify(normalized)) {
       await this.repository.write(normalized)
     }

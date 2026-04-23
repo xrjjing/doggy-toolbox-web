@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  AiSettingsSaveInput,
+  AiSettingsState,
   AiStreamEvent,
   AiStartChatInput,
   AiChatHistoryState,
@@ -23,15 +25,23 @@ import type {
   PromptTemplateUseInput
 } from '../shared/ipc-contract'
 
+/**
+ * preload 是 renderer 能接触到的唯一主进程桥。
+ * 这里故意不暴露 `ipcRenderer`，只暴露按 IPC 合约定义的白名单方法。
+ */
 const api: BridgeApi = {
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:get-info'),
   getAiChatHistoryState: (): Promise<AiChatHistoryState> =>
     ipcRenderer.invoke('ai:get-history-state'),
   getAiChatSession: (sessionId: string): Promise<AiChatSessionRecord | null> =>
     ipcRenderer.invoke('ai:get-session', sessionId),
+  getAiSettingsState: (): Promise<AiSettingsState> => ipcRenderer.invoke('ai:get-settings-state'),
+  saveAiSettings: (input: AiSettingsSaveInput): Promise<AiSettingsState> =>
+    ipcRenderer.invoke('ai:save-settings', input),
   aiStartChat: (input: AiStartChatInput) => ipcRenderer.invoke('ai:start-chat', input),
   aiCancelChat: (sessionId: string) => ipcRenderer.invoke('ai:cancel-chat', sessionId),
   onAiStreamEvent: (handler: (event: AiStreamEvent) => void) => {
+    // 返回解绑函数，避免页面重复挂载后叠加监听器。
     const listener = (_event: Electron.IpcRendererEvent, payload: AiStreamEvent): void => {
       handler(payload)
     }
@@ -86,4 +96,8 @@ const api: BridgeApi = {
   importLegacyData: (input: LegacyImportInput) => ipcRenderer.invoke('legacy:import', input)
 }
 
+/**
+ * `window.doggy` 是 renderer 固定入口。
+ * `contextIsolation` 开启后，页面层只能通过这里访问主进程能力，安全边界比较清晰。
+ */
 contextBridge.exposeInMainWorld('doggy', api)

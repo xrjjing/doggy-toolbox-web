@@ -15,8 +15,23 @@ import {
   useMessage
 } from 'naive-ui'
 import type { CommandRecord } from '@shared/ipc-contract'
+import { useAiSettingsStore } from '@renderer/stores/ai-settings'
+import { useAiStore } from '@renderer/stores/ai'
 import { useCommandsStore } from '@renderer/stores/commands'
 
+/**
+ * 命令管理页只负责 renderer 侧交互编排：
+ * - 组织分组侧栏、命令卡片和编辑弹窗。
+ * - 把表单字符串转换为 store 可接受的输入结构。
+ * - 展示 store 返回的命令模块快照。
+ *
+ * 真实调用链固定为：
+ * UI -> commandsStore -> window.doggy(preload)
+ * -> ipcMain.handle('commands:*') -> CommandService -> JsonFileRepository
+ *
+ * 这样分层后，页面层不直接接触文件系统或 Electron IPC 细节；
+ * 输入清洗、默认分组兜底、排序和持久化规则都收口在主进程 service。
+ */
 type CommandFormState = {
   id?: string
   title: string
@@ -27,13 +42,17 @@ type CommandFormState = {
 }
 
 const message = useMessage()
+const aiStore = useAiStore()
+const aiSettingsStore = useAiSettingsStore()
 const commandsStore = useCommandsStore()
 const tabModalVisible = ref(false)
 const commandModalVisible = ref(false)
+// 分组弹窗只维护最小状态：当前编辑对象 id 和名称。
 const tabForm = reactive({
   id: '',
   name: ''
 })
+// 命令弹窗保留“适合输入框编辑”的字符串态，提交时再转换成数组型 IPC 输入。
 const commandForm = reactive<CommandFormState>({
   id: '',
   title: '',
@@ -43,6 +62,7 @@ const commandForm = reactive<CommandFormState>({
   tabId: ''
 })
 
+// 顶部统计卡片完全基于 store 快照，避免页面层再维护第二份命令列表事实。
 const stats = computed(() => ({
   tabs: commandsStore.tabs.length,
   total: commandsStore.commands.length,
@@ -50,6 +70,7 @@ const stats = computed(() => ({
 }))
 
 const tabSummary = computed(() => commandsStore.currentTab?.name ?? '未选择分组')
+// 模板层既要显示名称也要显示数量，因此先把 tabs 投影成更适合渲染的对象。
 const tabOptions = computed(() =>
   commandsStore.tabs.map((tab) => ({
     id: tab.id,
@@ -64,10 +85,12 @@ function formatUpdatedAt(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
+// 统一处理命令数组到展示文本的转换，供卡片展示和复制复用。
 function renderCommandLines(command: CommandRecord): string {
   return command.lines.join('\n')
 }
 
+// 复制命令只属于 renderer 本地能力，不会触发 store / IPC，也不会改动持久化状态。
 async function copyCommand(command: CommandRecord): Promise<void> {
   const text = renderCommandLines(command)
 
@@ -79,12 +102,62 @@ async function copyCommand(command: CommandRecord): Promise<void> {
   }
 }
 
+/**
+ * 命令页 AI 入口只把“当前可见命令快照”交给统一 AI 会话链路，
+ * 不会直接执行命令，也不会越过命令资料库状态单独拼装持久化数据。
+ */
+async function explainCommandsWithAi(): Promise<void> {
+  if (!commandsStore.hasLoaded) {
+    await commandsStore.load()
+  }
+
+  const focusedCommands = commandsStore.visibleCommands.slice(0, 12)
+  if (focusedCommands.length === 0) {
+    message.warning('当前没有可分析的命令内容')
+    return
+  }
+
+  const prompt = [
+    '请基于当前命令资料做一次中文整理。',
+    '要求：',
+    '1. 先总结当前分组下命令主要用途。',
+    '2. 指出高风险命令、执行前检查点和适用场景。',
+    '3. 如果命令内容重复或描述不足，请给出整理建议。',
+    '',
+    `当前分组：${commandsStore.currentTab?.name ?? '全部分组'}`,
+    `当前搜索词：${commandsStore.search || '无'}`,
+    '',
+    '命令清单：',
+    focusedCommands
+      .map(
+        (command, index) =>
+          `${index + 1}. ${command.title}\n描述：${command.description || '无'}\n标签：${
+            command.tags.join(', ') || '无'
+          }\n内容：\n${renderCommandLines(command)}`
+      )
+      .join('\n\n')
+  ].join('\n')
+
+  try {
+    await aiStore.startChat({
+      moduleId: 'commands',
+      title: '命令资料 AI 说明',
+      prompt
+    })
+    message.success('命令资料已发送到 AI Bridge，请到 AI 页面查看会话结果。')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+// 新建分组前显式清空旧表单，避免编辑态残留串入新增流程。
 function openCreateTabModal(): void {
   tabForm.id = ''
   tabForm.name = ''
   tabModalVisible.value = true
 }
 
+// 新建命令默认落到当前激活分组；如果当前没有激活值，则退回 store 维护的默认分组。
 function openCreateCommandModal(): void {
   commandForm.id = ''
   commandForm.title = ''
@@ -95,6 +168,7 @@ function openCreateCommandModal(): void {
   commandModalVisible.value = true
 }
 
+// 编辑时把数组/标签重新转换回输入框更好编辑的字符串态。
 function openEditCommandModal(command: CommandRecord): void {
   commandForm.id = command.id
   commandForm.title = command.title
@@ -105,6 +179,7 @@ function openEditCommandModal(command: CommandRecord): void {
   commandModalVisible.value = true
 }
 
+// 页面只把表单提交给 store；真正的合法性校验、ID 生成和排序由 CommandService 负责。
 async function submitTab(): Promise<void> {
   try {
     await commandsStore.saveTab({
@@ -118,6 +193,10 @@ async function submitTab(): Promise<void> {
   }
 }
 
+// 页面层做最小格式整理：
+// - 多行文本 -> lines:string[]
+// - 标签文本 -> tags:string[]
+// 真正的 trim、空行剔除和分组兜底仍在主进程统一处理。
 async function submitCommand(): Promise<void> {
   try {
     await commandsStore.saveCommand({
@@ -138,6 +217,7 @@ async function submitCommand(): Promise<void> {
   }
 }
 
+// 删除入口只负责传递命令 id；删除是否成功和刷新后的最新状态由 store/service 返回。
 async function deleteCommand(commandId: string): Promise<void> {
   try {
     const ok = await commandsStore.removeCommand(commandId)
@@ -152,8 +232,12 @@ async function deleteCommand(commandId: string): Promise<void> {
 }
 
 onMounted(() => {
+  // 只在首次进入页面时拉取快照，避免回切页面时重复请求打断用户当前筛选。
   if (!commandsStore.hasLoaded) {
     void commandsStore.load()
+  }
+  if (!aiSettingsStore.hasLoaded) {
+    void aiSettingsStore.load()
   }
 })
 </script>
@@ -202,6 +286,7 @@ onMounted(() => {
       </template>
 
       <div class="commands-tab-list">
+        <!-- 分组切换只改变 store 的 activeTabId，命令数据仍来自同一份 snapshot。 -->
         <button
           v-for="tab in tabOptions"
           :key="tab.id"
@@ -236,9 +321,17 @@ onMounted(() => {
             @update:value="commandsStore.setSearch"
           />
           <NSpace>
+            <!-- 刷新会完整重走 UI -> store -> preload -> IPC -> service 链路，同步最新快照。 -->
             <NButton secondary :loading="commandsStore.loading" @click="commandsStore.load"
               >刷新</NButton
             >
+            <NButton
+              secondary
+              :disabled="!aiSettingsStore.isFeatureEnabled('commands')"
+              @click="explainCommandsWithAi"
+            >
+              AI 说明
+            </NButton>
             <NButton
               type="primary"
               :disabled="commandsStore.tabs.length === 0"
@@ -251,6 +344,7 @@ onMounted(() => {
       </NCard>
 
       <div v-if="commandsStore.visibleCommands.length > 0" class="commands-grid">
+        <!-- 卡片列表是 store 基于当前搜索词和分组筛选计算出的前端派生结果。 -->
         <NCard
           v-for="command in commandsStore.visibleCommands"
           :key="command.id"
@@ -300,6 +394,7 @@ onMounted(() => {
 
   <NModal v-model:show="tabModalVisible" preset="card" title="新增分组" class="form-modal">
     <NForm>
+      <!-- 分组弹窗只处理名称输入，默认分组约束和排序规则都在主进程 service。 -->
       <NFormItem label="分组名称">
         <NInput v-model:value="tabForm.name" placeholder="例如：Git / Docker / 日常排障" />
       </NFormItem>
@@ -319,6 +414,7 @@ onMounted(() => {
     class="form-modal command-form-modal"
   >
     <NForm>
+      <!-- 这里保留字符串态表单，提交时再统一映射为 CommandSaveInput。 -->
       <NFormItem label="标题">
         <NInput v-model:value="commandForm.title" placeholder="例如：查看最近 20 条提交日志" />
       </NFormItem>

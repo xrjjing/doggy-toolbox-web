@@ -17,8 +17,22 @@ import {
   useMessage
 } from 'naive-ui'
 import type { PromptTemplate, PromptVariable } from '@shared/ipc-contract'
+import { useAiSettingsStore } from '@renderer/stores/ai-settings'
+import { useAiStore } from '@renderer/stores/ai'
 import { usePromptsStore } from '@renderer/stores/prompts'
 
+/**
+ * Prompt 模板页承担 renderer 侧两类职责：
+ * 1. 模板库管理：分类、模板、收藏、删除与编辑。
+ * 2. 模板试用：填写变量、请求主进程填充、展示最终结果。
+ *
+ * 真实链路：
+ * UI -> promptsStore -> window.doggy(preload)
+ * -> ipcMain.handle('prompts:*') -> PromptService -> JsonFileRepository
+ *
+ * 变量解析/填充放在主进程 service 的目的，是让 Prompt 语法规则只有一份实现，
+ * 后续聊天页、导入流程和模板库都能复用同一套逻辑，避免 renderer/main 双实现漂移。
+ */
 type CategoryFormState = {
   id?: string
   name: string
@@ -35,15 +49,19 @@ type TemplateFormState = {
 }
 
 const message = useMessage()
+const aiStore = useAiStore()
+const aiSettingsStore = useAiSettingsStore()
 const promptsStore = usePromptsStore()
 const categoryModalVisible = ref(false)
 const templateModalVisible = ref(false)
 const variablesModalVisible = ref(false)
 const resultModalVisible = ref(false)
+// 这三个状态构成一次“使用模板”流程的上下文，只存在于页面层，不进入持久化 store。
 const currentTemplate = ref<PromptTemplate | null>(null)
 const variableValues = ref<Record<string, string>>({})
 const filledContent = ref('')
 
+// 分类表单与模板表单分离，避免分类操作和模板正文编辑耦合到同一份状态里。
 const categoryForm = reactive<CategoryFormState>({
   id: '',
   name: '',
@@ -58,12 +76,14 @@ const templateForm = reactive<TemplateFormState>({
   content: ''
 })
 
+// 顶部统计完全来自 store 快照，保证分类数、模板数和收藏数都对应真实持久化状态。
 const stats = computed(() => ({
   categories: promptsStore.categories.length,
   templates: promptsStore.templates.length,
   visible: promptsStore.visibleTemplates.length,
   favorites: promptsStore.templates.filter((template) => template.isFavorite).length
 }))
+// NSelect 需要 label/value 结构，页面在这里把分类快照映射成控件友好的选项数组。
 const categoryOptions = computed(() => [
   { label: '未分类', value: '' },
   ...promptsStore.categories.map((category) => ({
@@ -87,6 +107,7 @@ function getCategoryName(categoryId: string): string {
   return promptsStore.categories.find((category) => category.id === categoryId)?.name ?? '未知分类'
 }
 
+// 新建分类只重置分类弹窗自身状态，不影响当前模板筛选条件。
 function openCreateCategoryModal(): void {
   categoryForm.id = ''
   categoryForm.name = ''
@@ -94,6 +115,7 @@ function openCreateCategoryModal(): void {
   categoryModalVisible.value = true
 }
 
+// 分类编辑按 id 回查 store 快照，避免页面持有长期脱节的分类对象引用。
 function openEditCategoryModal(categoryId: string): void {
   const category = promptsStore.categories.find((item) => item.id === categoryId)
   if (!category) return
@@ -103,6 +125,7 @@ function openEditCategoryModal(categoryId: string): void {
   categoryModalVisible.value = true
 }
 
+// 新建模板默认继承当前激活分类；如果当前是“全部模板”，则退回未分类。
 function openCreateTemplateModal(): void {
   templateForm.id = ''
   templateForm.title = ''
@@ -114,6 +137,7 @@ function openCreateTemplateModal(): void {
   templateModalVisible.value = true
 }
 
+// 编辑模板时把 tags 数组回填为逗号文本；variables 不手工维护，后续由 service 重新解析。
 function openEditTemplateModal(template: PromptTemplate): void {
   templateForm.id = template.id
   templateForm.title = template.title
@@ -124,6 +148,7 @@ function openEditTemplateModal(template: PromptTemplate): void {
   templateModalVisible.value = true
 }
 
+// 页面只提交分类表单；合法性校验、排序和删除后的模板归类规则由主进程统一负责。
 async function submitCategory(): Promise<void> {
   try {
     await promptsStore.saveCategory({
@@ -138,6 +163,8 @@ async function submitCategory(): Promise<void> {
   }
 }
 
+// 模板提交时，页面只做 tags 的文本拆分。
+// variables 始终由 PromptService 基于 content 解析得出，避免页面自造结构。
 async function submitTemplate(): Promise<void> {
   try {
     await promptsStore.saveTemplate({
@@ -158,6 +185,7 @@ async function submitTemplate(): Promise<void> {
   }
 }
 
+// 删除分类时，真正的“模板转为未分类”逻辑在 service；页面只消费最终结果消息。
 async function deleteCategory(categoryId: string): Promise<void> {
   try {
     const ok = await promptsStore.removeCategory(categoryId)
@@ -167,6 +195,7 @@ async function deleteCategory(categoryId: string): Promise<void> {
   }
 }
 
+// 删除模板与收藏切换都走主进程，这样模板元数据只有一份可信来源。
 async function deleteTemplate(templateId: string): Promise<void> {
   try {
     const ok = await promptsStore.removeTemplate(templateId)
@@ -185,6 +214,10 @@ async function toggleFavorite(template: PromptTemplate): Promise<void> {
   }
 }
 
+// “使用模板”先建立一次页面级临时上下文：
+// - currentTemplate 指向当前模板
+// - variableValues 以 service 已解析好的变量定义为准
+// 没有变量时直接应用，避免无意义弹窗。
 async function openUseTemplate(template: PromptTemplate): Promise<void> {
   currentTemplate.value = template
   variableValues.value = Object.fromEntries(
@@ -199,6 +232,8 @@ async function openUseTemplate(template: PromptTemplate): Promise<void> {
   variablesModalVisible.value = true
 }
 
+// 最终填充动作由 PromptService.useTemplate 完成，而不是页面本地 replace。
+// 这样默认值回退、变量选项和使用次数统计都能复用主进程规则。
 async function applyTemplate(): Promise<void> {
   if (!currentTemplate.value) return
 
@@ -215,6 +250,7 @@ async function applyTemplate(): Promise<void> {
   }
 }
 
+// 复制的是主进程返回的最终文本，不再次触发 store 或 service。
 async function copyFilledContent(): Promise<void> {
   try {
     await navigator.clipboard.writeText(filledContent.value)
@@ -224,13 +260,69 @@ async function copyFilledContent(): Promise<void> {
   }
 }
 
+/**
+ * Prompt 页 AI 入口聚焦“模板质量复查”而不是直接代替模板执行。
+ * 这里把当前可见模板和变量信息打包给 AI，用于润色、分组建议和风险提示。
+ */
+async function reviewPromptsWithAi(): Promise<void> {
+  if (!promptsStore.hasLoaded) {
+    await promptsStore.load()
+  }
+
+  const visibleTemplates = promptsStore.visibleTemplates.slice(0, 8)
+  if (visibleTemplates.length === 0) {
+    message.warning('当前没有可分析的 Prompt 模板')
+    return
+  }
+
+  const prompt = [
+    '请审查当前 Prompt 模板库，并给出中文整理建议。',
+    '要求：',
+    '1. 先总结当前模板主要覆盖哪些场景。',
+    '2. 指出描述不清、变量设计不合理或内容重复的模板。',
+    '3. 对当前分类方式给出优化建议。',
+    '',
+    `当前分类：${activeCategoryLabel.value}`,
+    `仅收藏视图：${promptsStore.favoritesOnly ? '是' : '否'}`,
+    `当前搜索词：${promptsStore.search || '无'}`,
+    '',
+    '模板清单：',
+    visibleTemplates
+      .map(
+        (template, index) =>
+          `${index + 1}. ${template.title}\n分类：${getCategoryName(template.categoryId)}\n描述：${
+            template.description || '无'
+          }\n标签：${template.tags.join(', ') || '无'}\n变量：${
+            template.variables.map((variable) => variable.name).join(', ') || '无'
+          }\n内容：\n${template.content}`
+      )
+      .join('\n\n')
+  ].join('\n')
+
+  try {
+    await aiStore.startChat({
+      moduleId: 'prompts',
+      title: 'Prompt 模板 AI 审查',
+      prompt
+    })
+    message.success('Prompt 模板已发送到 AI Bridge，请到 AI 页面查看会话结果。')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+// 变量选项已经由 service 解析完成；这里仅做 Naive UI 所需的数据映射。
 function variableOptions(variable: PromptVariable): Array<{ label: string; value: string }> {
   return variable.options.map((option) => ({ label: option, value: option }))
 }
 
 onMounted(() => {
+  // 只在首次进入时拉取模板库快照，后续页面回切沿用当前筛选和收藏视图状态。
   if (!promptsStore.hasLoaded) {
     void promptsStore.load()
+  }
+  if (!aiSettingsStore.hasLoaded) {
+    void aiSettingsStore.load()
   }
 })
 </script>
@@ -279,6 +371,7 @@ onMounted(() => {
       </template>
 
       <div class="commands-tab-list">
+        <!-- 左侧分类导航只改变 activeCategoryId，不会直接触发主进程写操作。 -->
         <button
           class="tool-nav-item commands-tab-item"
           :class="{ active: promptsStore.activeCategoryId === 'all' }"
@@ -334,15 +427,24 @@ onMounted(() => {
             仅收藏
           </NCheckbox>
           <NSpace>
+            <!-- 刷新会重新同步分类、模板、收藏状态以及 storageFile / updatedAt。 -->
             <NButton secondary :loading="promptsStore.loading" @click="promptsStore.load"
               >刷新</NButton
             >
+            <NButton
+              secondary
+              :disabled="!aiSettingsStore.isFeatureEnabled('prompts')"
+              @click="reviewPromptsWithAi"
+            >
+              AI 审查
+            </NButton>
             <NButton type="primary" @click="openCreateTemplateModal">新增模板</NButton>
           </NSpace>
         </div>
       </NCard>
 
       <div v-if="promptsStore.visibleTemplates.length > 0" class="prompts-grid">
+        <!-- 当前模板列表是分类过滤、收藏过滤和搜索过滤叠加后的前端派生结果。 -->
         <NCard
           v-for="template in promptsStore.visibleTemplates"
           :key="template.id"
@@ -402,6 +504,7 @@ onMounted(() => {
     class="form-modal"
   >
     <NForm>
+      <!-- 分类弹窗只处理分类本身，不在这里触碰模板内容，保持 UI 关注点分离。 -->
       <NFormItem label="分类名称">
         <NInput v-model:value="categoryForm.name" placeholder="例如：排障、代码、周报" />
       </NFormItem>
@@ -430,6 +533,7 @@ onMounted(() => {
     class="form-modal prompt-editor-modal"
   >
     <NForm>
+      <!-- 模板正文是唯一源文本；变量定义不单独编辑，而是提交后由 service 重新解析。 -->
       <div class="prompt-editor-grid">
         <div>
           <NFormItem label="标题">
@@ -474,6 +578,7 @@ onMounted(() => {
 
   <NModal v-model:show="variablesModalVisible" preset="card" title="填写变量" class="form-modal">
     <NForm>
+      <!-- 变量填写阶段严格消费 currentTemplate.variables，不允许页面自造额外变量。 -->
       <NFormItem v-for="variable in currentVariables" :key="variable.name" :label="variable.name">
         <NSelect
           v-if="variable.type === 'select'"
@@ -499,6 +604,7 @@ onMounted(() => {
     title="填充结果"
     class="form-modal prompt-result-modal"
   >
+    <!-- 最终结果来自 PromptService.useTemplate 返回值，便于后续复用到聊天页或外部复制。 -->
     <pre class="stream-output">{{ filledContent }}</pre>
     <div class="action-row modal-actions">
       <NButton secondary @click="resultModalVisible = false">关闭</NButton>

@@ -6,13 +6,24 @@ export type ToolAiAssistPromptInput = {
   extra: string
 }
 
+/**
+ * 工具页 AI 复核 prompt 生成器。
+ * 这里只做纯字符串拼装，不直接触发模型调用；
+ * ToolWorkbenchView 会把结果交给 AI store，复用统一会话链路。
+ */
 const MAX_SECTION_LENGTH = 4_000
 
+/**
+ * 每个区段独立截断，避免超大输入把整个 prompt 撑到不可控长度。
+ */
 function clipSection(value: string): string {
   if (value.length <= MAX_SECTION_LENGTH) return value || '无'
   return `${value.slice(0, MAX_SECTION_LENGTH)}\n\n[内容过长，已截断，只保留前 ${MAX_SECTION_LENGTH} 个字符]`
 }
 
+/**
+ * 输出模板保持稳定，便于不同工具共用一套“本地 AI 复核”工作流。
+ */
 export function buildToolAiAssistPrompt(input: ToolAiAssistPromptInput): string {
   return [
     '你是 doggy-toolbox-web 工具页的本地 AI 助手。',

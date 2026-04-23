@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NIcon, NSwitch, NTag } from 'naive-ui'
+import { NButton, NIcon, NSelect, NSlider, NSwitch, NTag } from 'naive-ui'
 import {
   AlbumsOutline,
   ChatbubblesOutline,
@@ -14,14 +14,22 @@ import {
   HomeOutline,
   ListCircleOutline,
   MoonOutline,
+  OptionsOutline,
   TerminalOutline,
   SunnyOutline
 } from '@vicons/ionicons5'
-import { useAppStore } from '@renderer/stores/app'
+import AppearanceSettingsModal from '@renderer/components/AppearanceSettingsModal.vue'
+import GlobalSearchModal from '@renderer/components/GlobalSearchModal.vue'
+import { cloneAppearance, useAppStore, type AppAppearance } from '@renderer/stores/app'
+import { appThemeOptions } from '@renderer/stores/app'
+import { useToolSearchStore } from '@renderer/stores/tool-search'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const toolSearchStore = useToolSearchStore()
+const showAppearanceModal = ref(false)
+const appearanceModalOrigin = ref<AppAppearance>(cloneAppearance(appStore.appearance))
 
 const navItems = [
   { path: '/', label: '总览', icon: HomeOutline },
@@ -43,13 +51,62 @@ const runtimeText = computed(() => {
   return `${info.platform} · ${info.appVersion}`
 })
 
+const titlebarModeOptions = [
+  { label: '固定标题栏', value: 'fixed' },
+  { label: '简约融合', value: 'minimal' }
+]
+
+function handleGlobalKeydown(event: KeyboardEvent): void {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    toolSearchStore.open()
+  }
+  if (event.key === 'Escape' && toolSearchStore.isOpen) {
+    toolSearchStore.close()
+  }
+}
+
 onMounted(() => {
   void appStore.loadRuntimeInfo()
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
+})
+
+/**
+ * 顶部外观条继续保留“即时生效”的快捷入口。
+ * 但旧项目还有更完整的设置弹窗，因此这里额外保存一份 origin，
+ * 供弹窗关闭时恢复草稿前状态。
+ */
+function openAppearanceModal(): void {
+  appearanceModalOrigin.value = cloneAppearance(appStore.appearance)
+  showAppearanceModal.value = true
+}
+
+function previewAppearance(appearance: AppAppearance): void {
+  appStore.previewAppearance(appearance)
+}
+
+function cancelAppearanceModal(): void {
+  appStore.previewAppearance(cloneAppearance(appearanceModalOrigin.value))
+}
+
+function saveAppearanceModal(appearance: AppAppearance): void {
+  appStore.commitAppearance(appearance)
+  appearanceModalOrigin.value = cloneAppearance(appearance)
+}
 </script>
 
 <template>
-  <div class="app-frame" :class="{ 'is-dark': appStore.isDark }">
+  <div
+    class="app-frame"
+    :class="{ 'is-dark': appStore.isDark }"
+    :data-theme="appStore.appearance.theme"
+    :data-glass="appStore.appearance.glassMode ? 'true' : 'false'"
+    :data-titlebar-mode="appStore.appearance.titlebarMode"
+  >
     <aside class="sidebar">
       <section class="brand-card">
         <div class="brand-mark">DT</div>
@@ -86,14 +143,78 @@ onMounted(() => {
           <strong>{{ runtimeText }}</strong>
         </div>
         <div class="topbar-actions">
+          <NButton secondary round @click="toolSearchStore.open">全局搜索 ⌘K</NButton>
           <NIcon :component="SunnyOutline" />
           <NSwitch :value="appStore.isDark" @update:value="appStore.toggleTheme" />
           <NIcon :component="MoonOutline" />
+          <NButton secondary round @click="openAppearanceModal">
+            <template #icon>
+              <NIcon :component="OptionsOutline" />
+            </template>
+            外观设置
+          </NButton>
           <NButton secondary round @click="appStore.loadRuntimeInfo()">刷新本机配置</NButton>
         </div>
       </header>
 
+      <section class="appearance-bar">
+        <div class="appearance-current">
+          <p class="eyebrow">appearance</p>
+          <strong>{{ appStore.currentThemeLabel }}</strong>
+        </div>
+        <NSelect
+          :value="appStore.appearance.theme"
+          :options="appThemeOptions"
+          size="small"
+          class="appearance-theme-select"
+          @update:value="(theme) => appStore.applyAppearance({ theme })"
+        />
+        <div class="appearance-inline">
+          <span>毛玻璃</span>
+          <NSwitch
+            :value="appStore.appearance.glassMode"
+            @update:value="(glassMode) => appStore.applyAppearance({ glassMode })"
+          />
+        </div>
+        <div class="appearance-slider">
+          <span>透明度 {{ appStore.appearance.glassOpacity }}%</span>
+          <NSlider
+            :value="appStore.appearance.glassOpacity"
+            :min="45"
+            :max="95"
+            :step="5"
+            @update:value="(glassOpacity) => appStore.applyAppearance({ glassOpacity })"
+          />
+        </div>
+        <div class="appearance-slider">
+          <span>缩放 {{ appStore.appearance.uiScale }}%</span>
+          <NSlider
+            :value="appStore.appearance.uiScale"
+            :min="50"
+            :max="100"
+            :step="5"
+            @update:value="(uiScale) => appStore.applyAppearance({ uiScale })"
+          />
+        </div>
+        <NSelect
+          :value="appStore.appearance.titlebarMode"
+          :options="titlebarModeOptions"
+          size="small"
+          class="appearance-titlebar-select"
+          @update:value="(titlebarMode) => appStore.applyAppearance({ titlebarMode })"
+        />
+      </section>
+
       <RouterView />
     </main>
   </div>
+
+  <AppearanceSettingsModal
+    v-model:show="showAppearanceModal"
+    :appearance="appStore.appearance"
+    @preview="previewAppearance"
+    @cancel="cancelAppearanceModal"
+    @save="saveAppearanceModal"
+  />
+  <GlobalSearchModal />
 </template>

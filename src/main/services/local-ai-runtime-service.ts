@@ -9,6 +9,10 @@ import type {
   RuntimeInfo
 } from '../../shared/ipc-contract'
 
+/**
+ * 对 `~/.codex` 配置的最小可见快照。
+ * 这里只提取用于展示和 bridge 初始化的字段，不读取也不暴露任何敏感 token 内容。
+ */
 type CodexConfigSnapshot = {
   configPath: string
   authPath: string
@@ -20,6 +24,10 @@ type CodexConfigSnapshot = {
   sandboxMode?: string
 }
 
+/**
+ * Claude Code 本地配置快照。
+ * 目的同样是做“可见事实”展示，而不是把完整配置对象传到 renderer。
+ */
 type ClaudeConfigSnapshot = {
   configPath: string
   available: boolean
@@ -37,6 +45,10 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * 这里刻意只支持简单的顶层标量读取。
+ * 当前需求只是检测本机运行时是否可用，不需要引入完整 TOML 解析器扩大依赖面。
+ */
 function parseTomlScalar(raw: string, key: string): string | undefined {
   const pattern = new RegExp(`^\\s*${key}\\s*=\\s*(.+?)\\s*$`, 'm')
   const match = raw.match(pattern)
@@ -54,6 +66,14 @@ function createFact(label: string, value: string | undefined): LocalRuntimeFact 
   return { label, value: normalized }
 }
 
+/**
+ * 本地 AI 运行时探测服务。
+ *
+ * 主要职责：
+ * 1. 在主进程读取本机 Codex / Claude 配置事实。
+ * 2. 给 UI 提供“当前机器能否运行 AI”的可审计信息。
+ * 3. 给 provider bridge 提供初始化 SDK 所需的最小运行时快照。
+ */
 export class LocalAiRuntimeService {
   async getCodexSnapshot(): Promise<CodexConfigSnapshot> {
     const configPath = join(homedir(), '.codex', 'config.toml')
@@ -155,6 +175,7 @@ export class LocalAiRuntimeService {
     platform: NodeJS.Platform
     dataDir: string
   }): Promise<RuntimeInfo> {
+    // 两套运行时探测互不依赖，直接并行读取可减少总览页加载时间。
     const [codex, claude] = await Promise.all([this.getCodexStatus(), this.getClaudeStatus()])
 
     return {

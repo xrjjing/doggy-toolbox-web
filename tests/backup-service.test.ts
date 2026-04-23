@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { AiSettingsService } from '../src/main/services/ai-settings-service'
 import { BackupService } from '../src/main/services/backup-service'
 import { CommandService } from '../src/main/services/command-service'
 import { CredentialService } from '../src/main/services/credential-service'
@@ -12,6 +13,7 @@ import { PromptService } from '../src/main/services/prompt-service'
 const LOCAL_HTTP_URL = 'http://127.0.0.1:65535/backup-history'
 
 async function createBackupFixture(): Promise<{
+  aiSettingsService: AiSettingsService
   commandService: CommandService
   credentialService: CredentialService
   httpCollectionService: HttpCollectionService
@@ -20,12 +22,14 @@ async function createBackupFixture(): Promise<{
   backupService: BackupService
 }> {
   const rootDir = await mkdtemp(join(tmpdir(), 'doggy-toolbox-web-backup-'))
+  const aiSettingsService = new AiSettingsService(rootDir)
   const commandService = new CommandService(rootDir)
   const credentialService = new CredentialService(rootDir)
   const httpCollectionService = new HttpCollectionService(rootDir)
   const nodeService = new NodeService(rootDir)
   const promptService = new PromptService(rootDir)
   const backupService = new BackupService({
+    aiSettingsService,
     commandService,
     credentialService,
     httpCollectionService,
@@ -34,6 +38,7 @@ async function createBackupFixture(): Promise<{
   })
 
   return {
+    aiSettingsService,
     commandService,
     credentialService,
     httpCollectionService,
@@ -45,9 +50,19 @@ async function createBackupFixture(): Promise<{
 
 describe('BackupService', () => {
   it('exports commands, credentials, nodes, http collections and prompts in one document', async () => {
-    const { commandService, credentialService, httpCollectionService, nodeService, backupService } =
-      await createBackupFixture()
+    const {
+      aiSettingsService,
+      commandService,
+      credentialService,
+      httpCollectionService,
+      nodeService,
+      backupService
+    } = await createBackupFixture()
 
+    await aiSettingsService.saveSettings({
+      workingDirectory: '/tmp/doggy-ai',
+      features: { tools: false }
+    })
     await commandService.saveCommand({ title: '状态', lines: ['git status'] })
     await credentialService.saveCredential({
       service: 'GitHub',
@@ -78,7 +93,7 @@ describe('BackupService', () => {
     expect(document).toMatchObject({
       version: '1.0',
       app: 'doggy-toolbox-web',
-      sections: ['commands', 'credentials', 'prompts', 'nodes', 'httpCollections']
+      sections: ['commands', 'credentials', 'prompts', 'nodes', 'httpCollections', 'aiSettings']
     })
     expect(document.summary.commands).toBe(1)
     expect(document.summary.credentials).toBe(1)
@@ -87,6 +102,8 @@ describe('BackupService', () => {
     expect(document.summary.httpRequests).toBe(2)
     expect(document.summary.promptTemplates).toBeGreaterThan(0)
     expect(document.summary.httpHistoryRecords).toBe(1)
+    expect(document.summary.aiSettings).toBe(1)
+    expect(document.data.aiSettings?.settings.workingDirectory).toBe('/tmp/doggy-ai')
     expect(document.data.httpCollections?.history).toHaveLength(1)
   })
 

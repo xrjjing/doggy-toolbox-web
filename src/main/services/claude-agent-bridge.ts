@@ -7,10 +7,16 @@ import type {
 import type { AiProviderBridge, AiProviderRunContext } from './ai-provider-router'
 import { LocalAiRuntimeService } from './local-ai-runtime-service'
 
+/**
+ * 与 Codex Bridge 保持同一输入策略，便于 renderer 复用完全相同的调用模型。
+ */
 function buildPrompt(messages: AiStartChatInput['messages']): string {
   return messages.map((message) => `${message.role}: ${message.content}`).join('\n\n')
 }
 
+/**
+ * 把 Claude Agent 的工具进度统一转成项目内部 `tool` 事件。
+ */
 function createToolEvent(
   sessionId: string,
   toolId: string,
@@ -28,6 +34,10 @@ function createToolEvent(
   }
 }
 
+/**
+ * Claude Agent Bridge 负责适配 `@anthropic-ai/claude-agent-sdk`。
+ * 上层无需理解它的专有消息类型，只消费统一流事件。
+ */
 export class ClaudeAgentBridge implements AiProviderBridge {
   constructor(private readonly runtimeService: LocalAiRuntimeService) {}
 
@@ -44,6 +54,7 @@ export class ClaudeAgentBridge implements AiProviderBridge {
     const runtime = await this.getRuntime(context.input)
     const { query } = await import('@anthropic-ai/claude-agent-sdk')
     const abortController = new AbortController()
+    // 把上层 abort 信号桥接给 Claude SDK，避免维护两套取消状态。
     context.abortSignal.addEventListener('abort', () => abortController.abort(), { once: true })
 
     const stream = query({
@@ -51,6 +62,7 @@ export class ClaudeAgentBridge implements AiProviderBridge {
       options: {
         cwd: runtime.workingDirectory,
         abortController,
+        // 优先复用用户已有的 Claude Code 多层配置。
         settingSources: ['user', 'project', 'local'],
         permissionMode: 'acceptEdits'
       }
@@ -91,6 +103,7 @@ export class ClaudeAgentBridge implements AiProviderBridge {
       }
 
       if (rawMessage.type === 'stream_event') {
+        // 增量文本和 thinking 都藏在 stream_event 里，需要手动拆成统一事件。
         const event = rawMessage.event as unknown as Record<string, unknown> | undefined
         const delta = event?.delta as Record<string, unknown> | undefined
         if (event?.type === 'content_block_delta' && delta?.type === 'text_delta') {
@@ -112,6 +125,7 @@ export class ClaudeAgentBridge implements AiProviderBridge {
       }
 
       if (rawMessage.type === 'assistant') {
+        // assistant 结果可能由多个 block 组成，统一拼接后再上抛。
         const blocks = Array.isArray(rawMessage.message?.content) ? rawMessage.message.content : []
         const text = blocks
           .map((block) => {
@@ -155,6 +169,7 @@ export class ClaudeAgentBridge implements AiProviderBridge {
 
       if (rawMessage.type === 'result') {
         if (rawMessage.subtype !== 'success') {
+          // 失败统一交给会话层写历史和 failed 状态。
           throw new Error(rawMessage.errors.join('\n') || 'Claude Agent 执行失败')
         }
         if (rawMessage.result) {

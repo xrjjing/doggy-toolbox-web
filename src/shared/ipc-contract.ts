@@ -1,3 +1,12 @@
+/**
+ * 共享 IPC 合约。
+ * Main / Preload / Renderer 三层都以这里作为唯一可信的数据协议来源。
+ */
+
+/**
+ * 运行时总览页使用的顶层结构。
+ * 只暴露“可见事实”，不包含任何敏感 token 内容。
+ */
 export type RuntimeInfo = {
   appName: string
   appVersion: string
@@ -28,6 +37,10 @@ export type LocalRuntimeStatus = {
   facts: LocalRuntimeFact[]
 }
 
+/**
+ * provider 是业务层概念；transport 是底层 SDK 适配层概念。
+ * 分开建模后，UI 能同时展示“选了谁”和“底层如何跑起来的”。
+ */
 export type AiProviderKind = 'codex' | 'claude-code'
 
 export type AiTransportKind = 'codex-sdk' | 'claude-agent-sdk'
@@ -52,6 +65,47 @@ export type AiStartChatInput = {
   title?: string
 }
 
+/**
+ * AI 设置里的模块开关使用固定 id，避免 renderer/main 各自维护不同命名。
+ * 这些 id 同时服务于：
+ * 1. 设置页的开关列表。
+ * 2. 各模块发起 AI 会话时的权限判断。
+ * 3. 后续文档里对“哪个页面已经接入 AI”的统一口径。
+ */
+export type AiFeatureModuleId = 'ai-chat' | 'tools' | 'http' | 'commands' | 'prompts' | 'nodes'
+
+export type AiFeatureSettings = Record<AiFeatureModuleId, boolean>
+
+/**
+ * 新仓的 AI 设置只保留真正仍有价值的本机 SDK 配置：
+ * - 默认工作目录
+ * - 默认系统提示
+ * - 全局开关
+ * - 各模块 AI 入口开关
+ *
+ * 不再复刻旧项目那套第三方 HTTPS provider CRUD。
+ */
+export type AiSettings = {
+  workingDirectory: string
+  systemPrompt: string
+  globalEnabled: boolean
+  features: AiFeatureSettings
+}
+
+export type AiSettingsSaveInput = Partial<AiSettings> & {
+  features?: Partial<AiFeatureSettings>
+}
+
+export type AiSettingsState = {
+  storageFile: string
+  updatedAt: string
+  settings: AiSettings
+}
+
+/**
+ * 运行时快照会被 start 事件和历史记录持久化，
+ * 用来描述这次会话到底使用了什么本机环境。
+ */
 export type AiSessionRuntime = {
   transport: AiTransportKind
   workingDirectory: string
@@ -78,6 +132,10 @@ export type AiToolCallSummary = {
   text?: string
 }
 
+/**
+ * 统一 AI 流事件协议。
+ * 各 provider 必须在主进程 bridge 层适配成这套 union，renderer 只消费这一种形状。
+ */
 export type AiStreamEvent =
   | {
       type: 'start'
@@ -164,6 +222,9 @@ export type AiChatSessionRecord = {
   errorMessage?: string
 }
 
+/**
+ * 历史列表只返回摘要；真正的大字段通过 sessionId 再单独读取详情。
+ */
 export type AiChatHistoryState = {
   storageFile: string
   updatedAt: string
@@ -212,6 +273,10 @@ export type CommandModuleState = {
   commands: CommandRecord[]
 }
 
+/**
+ * 对 renderer 暴露的是可展示的明文视图；
+ * 真正的密文落盘结构只存在于主进程 service 内部。
+ */
 export type CredentialRecord = {
   id: string
   service: string
@@ -430,6 +495,10 @@ export type HttpCollectionModuleState = {
   history: HttpExecutionHistoryRecord[]
 }
 
+/**
+ * `HttpResolvedRequest` 是真正即将发出的请求快照。
+ * 它保留 unresolvedVariables，方便 UI 提示哪些占位符没有成功替换。
+ */
 export type HttpResolvedRequest = {
   requestId: string
   environmentId?: string
@@ -514,7 +583,16 @@ export type HttpBatchExecuteResult = {
   results: HttpExecuteRequestResult[]
 }
 
-export type BackupSectionKey = 'commands' | 'credentials' | 'prompts' | 'nodes' | 'httpCollections'
+/**
+ * 统一备份协议只面向模块级数据，不直接暴露底层存储文件结构。
+ */
+export type BackupSectionKey =
+  | 'commands'
+  | 'credentials'
+  | 'prompts'
+  | 'nodes'
+  | 'httpCollections'
+  | 'aiSettings'
 
 export type BackupSummary = {
   commands: number
@@ -527,6 +605,7 @@ export type BackupSummary = {
   httpRequests: number
   httpEnvironments: number
   httpHistoryRecords: number
+  aiSettings: number
 }
 
 export type BackupDocument = {
@@ -544,6 +623,7 @@ export type BackupDocument = {
       HttpCollectionModuleState,
       'collections' | 'requests' | 'environments' | 'history'
     >
+    aiSettings?: Pick<AiSettingsState, 'settings'>
   }
 }
 
@@ -585,10 +665,16 @@ export type LegacyImportResult = {
   warnings: string[]
 }
 
+/**
+ * preload 暴露给 renderer 的完整白名单 API。
+ * 页面层只能依赖这里声明的方法，不能自行构造任意 IPC channel。
+ */
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
   getAiChatHistoryState: () => Promise<AiChatHistoryState>
   getAiChatSession: (sessionId: string) => Promise<AiChatSessionRecord | null>
+  getAiSettingsState: () => Promise<AiSettingsState>
+  saveAiSettings: (input: AiSettingsSaveInput) => Promise<AiSettingsState>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
   aiCancelChat: (sessionId: string) => Promise<{ ok: boolean }>
   onAiStreamEvent: (handler: (event: AiStreamEvent) => void) => () => void

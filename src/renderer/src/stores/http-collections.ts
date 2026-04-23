@@ -13,6 +13,19 @@ import type {
   HttpRequestSaveInput
 } from '@shared/ipc-contract'
 
+/**
+ * HTTP 集合 store。
+ * 这是本仓库状态最重的 renderer store 之一：
+ * - snapshot 保存集合、请求、环境、历史这些主进程持久化数据。
+ * - activeCollectionId / activeRequestId / selectedEnvironmentId / activeHistoryId
+ *   保存当前界面焦点。
+ * - executionResult / batchResult 保存最近一次执行结果，用于在 reload 前后保持结果面板可见。
+ */
+
+/**
+ * 搜索时把 URL、method、body、header、param、tag 一次拍平，
+ * 这样用户只要记得任意一个线索都能定位请求，不需要额外理解字段级检索语法。
+ */
 function matchesRequest(request: HttpRequestRecord, normalizedSearch: string): boolean {
   if (!normalizedSearch) return true
 
@@ -86,24 +99,33 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
       null
   )
 
+  /**
+   * 用主进程快照校正所有 renderer 焦点状态。
+   * 这里的几个回退分支很关键：导入备份、删除请求、切换集合后，旧 id 很容易失效，
+   * 若不统一修正，右侧详情面板会停留在不存在的对象上。
+   */
   function hydrateState(nextState: HttpCollectionModuleState): void {
     snapshot.value = nextState
     hasLoaded.value = true
 
+    // 当前集合不存在时，优先退回主进程默认集合。
     if (!collections.value.some((collection) => collection.id === activeCollectionId.value)) {
       activeCollectionId.value = nextState.defaultCollectionId
     }
 
+    // 默认集合也没有时，再退第一项，保证左侧列表有稳定选中态。
     if (!activeCollectionId.value && nextState.collections[0]) {
       activeCollectionId.value = nextState.collections[0].id
     }
 
+    // 请求焦点始终受当前集合约束，避免集合切换后仍指向别的集合里的请求。
     if (!requests.value.some((request) => request.id === activeRequestId.value)) {
       activeRequestId.value =
         requests.value.find((request) => request.collectionId === activeCollectionId.value)?.id ??
         ''
     }
 
+    // 环境是可选的；被删除或导入覆盖后，失效选择直接清空，不猜测替代项。
     if (
       selectedEnvironmentId.value &&
       !environments.value.some((environment) => environment.id === selectedEnvironmentId.value)
@@ -111,11 +133,16 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
       selectedEnvironmentId.value = ''
     }
 
+    // 历史面板跟随当前请求；请求变化或清空历史后，旧 historyId 必须作废。
     if (!activeRequestHistory.value.some((item) => item.id === activeHistoryId.value)) {
       activeHistoryId.value = activeRequestHistory.value[0]?.id ?? ''
     }
   }
 
+  /**
+   * HTTP 模块所有结构性更新都通过 reload 收口，
+   * 避免 renderer 自己维护集合、请求、历史三套关联关系。
+   */
   async function load(): Promise<void> {
     loading.value = true
     try {
@@ -125,6 +152,9 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 保存集合后切到新集合，符合“新建集合后立即往里面加请求”的主路径。
+   */
   async function saveCollection(input: HttpCollectionSaveInput): Promise<HttpCollection> {
     saving.value = true
     try {
@@ -137,6 +167,10 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 保存请求后同步刷新集合与请求焦点。
+   * 这样无论是新建还是移动到其他集合，页面都能直接定位到最终落点。
+   */
   async function saveRequest(input: HttpRequestSaveInput): Promise<HttpRequestRecord> {
     saving.value = true
     try {
@@ -150,6 +184,10 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 删除请求后，如果结果面板还引用的是该请求的最近执行结果，需要同步清空，
+   * 否则 UI 会展示一条已经无归属的执行结果。
+   */
   async function removeRequest(requestId: string): Promise<boolean> {
     saving.value = true
     try {
@@ -164,6 +202,9 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 环境是独立资源，但不维护单独的 activeEnvironment 详情页，所以保存后只需 reload。
+   */
   async function saveEnvironment(input: HttpEnvironmentSaveInput): Promise<HttpEnvironment> {
     saving.value = true
     try {
@@ -175,6 +216,10 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 删除当前选中环境时，主动清空 selectedEnvironmentId，
+   * 避免后续执行仍带着一个已经失效的环境引用。
+   */
   async function removeEnvironment(environmentId: string): Promise<boolean> {
     saving.value = true
     try {
@@ -189,6 +234,10 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 集合切换会连带重置请求和历史焦点。
+   * 这里不保留“上一个请求 id”，因为不同集合之间请求集合天然不兼容。
+   */
   function setActiveCollection(collectionId: string): void {
     activeCollectionId.value = collectionId
     activeRequestId.value =
@@ -213,6 +262,10 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     search.value = value
   }
 
+  /**
+   * 单条执行入口。
+   * 真正的变量替换、请求发送和历史落盘都在主进程；renderer 只负责传当前焦点和环境。
+   */
   async function executeActiveRequest(): Promise<HttpExecuteRequestResult> {
     if (!activeRequest.value) {
       throw new Error('请先选择一个 HTTP 请求')
@@ -232,6 +285,10 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 批量执行入口。
+   * 批次结果会额外把第一条结果提升为 executionResult，方便复用现有单请求结果面板。
+   */
   async function executeActiveCollectionBatch(): Promise<HttpBatchExecuteResult> {
     const collectionId = activeCollectionId.value || activeCollection.value?.id
     if (!collectionId) {
@@ -253,6 +310,10 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 清理历史是对当前请求的局部维护操作。
+   * 删除成功后只清空 history 焦点，不改当前请求和集合选择。
+   */
   async function clearActiveRequestHistory(): Promise<{ ok: boolean; removed: number }> {
     if (!activeRequest.value) {
       return { ok: false, removed: 0 }
@@ -271,6 +332,9 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     }
   }
 
+  /**
+   * 集合徽标计数基于全量 requests，而不是当前搜索结果。
+   */
   function countByCollection(collectionId: string): number {
     return requests.value.filter((request) => request.collectionId === collectionId).length
   }

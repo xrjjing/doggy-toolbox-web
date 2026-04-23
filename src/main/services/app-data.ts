@@ -14,6 +14,7 @@ export type AppDataPaths = {
     nodes: string
     httpCollections: string
     aiChatSessions: string
+    aiSettings: string
   }
 }
 
@@ -35,7 +36,8 @@ export function resolveAppDataPaths(rootDir: string): AppDataPaths {
       prompts: join(storageDir, 'prompts.json'),
       nodes: join(storageDir, 'nodes.json'),
       httpCollections: join(storageDir, 'http-collections.json'),
-      aiChatSessions: join(storageDir, 'ai-chat-sessions.json')
+      aiChatSessions: join(storageDir, 'ai-chat-sessions.json'),
+      aiSettings: join(storageDir, 'ai-settings.json')
     }
   }
 }

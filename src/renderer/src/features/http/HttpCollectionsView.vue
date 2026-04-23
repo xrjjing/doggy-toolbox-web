@@ -16,6 +16,7 @@ import {
   useMessage
 } from 'naive-ui'
 import type {
+  AiProviderKind,
   HttpAuth,
   HttpBody,
   HttpEnvironment,
@@ -24,6 +25,8 @@ import type {
   HttpResponseHeader,
   HttpRequestRecord
 } from '@shared/ipc-contract'
+import { useAiSettingsStore } from '@renderer/stores/ai-settings'
+import { useAiStore } from '@renderer/stores/ai'
 import { useHttpCollectionsStore } from '@renderer/stores/http-collections'
 import {
   exportCollectionAsApifox,
@@ -71,6 +74,8 @@ type CollectionImportFormat = 'postman' | 'openapi' | 'apifox'
 type ExportFormat = 'curl' | 'httpie' | 'postman' | 'openapi' | 'apifox'
 
 const message = useMessage()
+const aiStore = useAiStore()
+const aiSettingsStore = useAiSettingsStore()
 const httpStore = useHttpCollectionsStore()
 const collectionModalVisible = ref(false)
 const requestModalVisible = ref(false)
@@ -83,6 +88,7 @@ const collectionImportText = ref('')
 const collectionImportFormat = ref<CollectionImportFormat>('postman')
 const exportText = ref('')
 const exportFormat = ref<ExportFormat>('curl')
+const aiProvider = ref<AiProviderKind>('codex')
 const collectionForm = reactive<CollectionFormState>({
   id: '',
   name: '',
@@ -495,6 +501,53 @@ async function copyExportText(): Promise<void> {
   }
 }
 
+/**
+ * HTTP 页 AI 入口复用统一 AI 会话链路，聚焦“请求资料和执行结果解释”。
+ * 它不会直接再次发送网络请求，而是把当前请求、环境和最近一次结果打包给本地 SDK 说明。
+ */
+async function explainHttpWithAi(): Promise<void> {
+  if (!httpStore.hasLoaded) {
+    await httpStore.load()
+  }
+
+  if (!httpStore.activeRequest) {
+    message.warning('请先选择一个 HTTP 请求')
+    return
+  }
+
+  const prompt = [
+    '请基于当前 HTTP 请求资料和最近一次执行结果，做一次中文分析。',
+    '要求：',
+    '1. 先总结这个请求的用途、方法、认证方式和环境变量依赖。',
+    '2. 如果最近执行结果存在失败或未解析变量，指出最可能原因。',
+    '3. 给出下一步最小可执行检查建议。',
+    '',
+    `当前集合：${httpStore.activeCollection?.name ?? '无'}`,
+    `当前环境：${
+      httpStore.environments.find((item) => item.id === httpStore.selectedEnvironmentId)?.name ||
+      '无'
+    }`,
+    '',
+    '请求配置：',
+    JSON.stringify(httpStore.activeRequest, null, 2),
+    '',
+    '最近执行结果：',
+    JSON.stringify(httpStore.executionResult ?? { message: '尚未执行当前请求' }, null, 2)
+  ].join('\n')
+
+  try {
+    await aiStore.startChat({
+      moduleId: 'http',
+      provider: aiProvider.value,
+      title: `${httpStore.activeRequest.name} HTTP AI 分析`,
+      prompt
+    })
+    message.success('HTTP 请求资料已发送到 AI Bridge，请到 AI 页面查看会话结果。')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 watch(
   () => httpStore.activeCollectionId,
   (collectionId) => {
@@ -506,6 +559,9 @@ watch(
 
 onMounted(() => {
   void httpStore.load()
+  if (!aiSettingsStore.hasLoaded) {
+    void aiSettingsStore.load()
+  }
 })
 </script>
 
@@ -566,6 +622,21 @@ onMounted(() => {
         @update:value="httpStore.setActiveCollection"
       />
       <NButton secondary :loading="httpStore.loading" @click="httpStore.load">刷新</NButton>
+      <NSelect
+        v-model:value="aiProvider"
+        :options="[
+          { label: 'Codex SDK', value: 'codex' },
+          { label: 'Claude Code SDK', value: 'claude-code' }
+        ]"
+        class="tool-select"
+      />
+      <NButton
+        secondary
+        :disabled="!aiSettingsStore.isFeatureEnabled('http') || !httpStore.activeRequest"
+        @click="explainHttpWithAi"
+      >
+        AI 分析
+      </NButton>
       <NButton
         secondary
         :loading="httpStore.batchExecuting"

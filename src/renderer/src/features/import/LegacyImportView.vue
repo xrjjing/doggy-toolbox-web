@@ -15,10 +15,24 @@ import type { BackupSectionKey } from '@shared/ipc-contract'
 import { backupSectionOptions } from '@renderer/stores/backup'
 import { useLegacyImportStore } from '@renderer/stores/legacy-import'
 
+/**
+ * 旧数据导入页是 renderer 侧的导入编排界面，不直接解析 JSON，也不直接落盘。
+ *
+ * 真实链路：
+ * UI -> legacyImportStore -> window.doggy(preload)
+ * -> ipcMain.handle('legacy:analyze-import' | 'legacy:import')
+ * -> LegacyImportService -> 各模块 service(Command/Credential/Node/Prompt)
+ *
+ * 这样拆分后：
+ * - 页面只负责提示来源类型、可选模块和导入结果。
+ * - LegacyImportService 统一判断 JSON 合法性、来源结构以及覆盖/合并策略。
+ * - 具体模块落盘仍由各自 service 执行，避免导入逻辑绕过正常持久化边界。
+ */
 const message = useMessage()
 const legacyImportStore = useLegacyImportStore()
 const sectionLabelMap = new Map(backupSectionOptions.map((option) => [option.value, option.label]))
 
+// 统计卡片优先展示最近一次导入结果；若还未导入，则展示最近一次分析摘要。
 const summaryCards = computed(() => {
   const summary = legacyImportStore.importResult?.summary ?? legacyImportStore.analysis?.summary
   return [
@@ -30,6 +44,7 @@ const summaryCards = computed(() => {
     { label: '节点', value: summary?.nodes ?? 0 }
   ]
 })
+// 可选模块以后端识别出的 availableSections 为准，页面不能越权暴露不支持的导入项。
 const sectionOptions = computed(() =>
   backupSectionOptions.filter((option) =>
     legacyImportStore.availableSections.includes(option.value)
@@ -45,6 +60,7 @@ function formatImportedAt(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
+// 复选框回调给出的值类型较宽，这里显式收窄成 BackupSectionKey，并过滤掉不允许的项。
 function updateSections(value: Array<string | number>): void {
   const allowed = new Set<BackupSectionKey>(sectionOptions.value.map((option) => option.value))
   legacyImportStore.setSections(
@@ -52,6 +68,8 @@ function updateSections(value: Array<string | number>): void {
   )
 }
 
+// 识别阶段只做预分析，不执行真实写入。
+// 其输出用于提示“来源是什么”“哪些模块可导入”“可能有哪些风险”。
 async function analyzeSource(): Promise<void> {
   if (!legacyImportStore.sourceJson.trim()) {
     message.warning('请先粘贴旧项目 JSON')
@@ -66,6 +84,8 @@ async function analyzeSource(): Promise<void> {
   }
 }
 
+// 真实导入必须基于一次成功的 analyze 结果；
+// 页面仅做前置校验，覆盖/合并语义由 LegacyImportService 决定。
 async function importSource(): Promise<void> {
   if (!legacyImportStore.hasAnalysis) {
     message.warning('请先识别旧数据类型')
@@ -110,6 +130,7 @@ async function importSource(): Promise<void> {
     <NCard class="soft-card" :bordered="false">
       <template #header>导入源 JSON</template>
       <NSpace vertical size="large">
+        <!-- 原始 JSON 文本由 store 暂存；一旦用户改动文本，旧分析和旧导入结果会被清空。 -->
         <NInput
           :value="legacyImportStore.sourceJson"
           type="textarea"
@@ -130,6 +151,7 @@ async function importSource(): Promise<void> {
       <template #header>识别结果</template>
 
       <div v-if="legacyImportStore.analysis" class="legacy-analysis">
+        <!-- 这里展示的是 analyze 阶段的只读结果，目的是在导入前先讲清来源和影响范围。 -->
         <div class="card-title-row">
           <strong>{{ legacyImportStore.analysis.sourceLabel }}</strong>
           <NTag size="small" :bordered="false">{{ legacyImportStore.analysis.sourceKind }}</NTag>
@@ -155,6 +177,7 @@ async function importSource(): Promise<void> {
     >
       <template #header>导入模块</template>
 
+      <!-- 复选框只允许选择当前来源真实支持的 section。 -->
       <NCheckboxGroup
         :value="legacyImportStore.selectedSections"
         :options="sectionOptions"
@@ -191,6 +214,7 @@ async function importSource(): Promise<void> {
     <NCard v-if="legacyImportStore.importResult" class="soft-card" :bordered="false">
       <template #header>最近一次导入结果</template>
 
+      <!-- 这里展示的是 import 阶段的最终结果，与上面的 analysis 预估结果明确分层。 -->
       <div class="legacy-analysis">
         <div class="card-title-row">
           <strong>{{ formatSections(legacyImportStore.importResult.sections) }}</strong>

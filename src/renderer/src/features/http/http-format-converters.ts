@@ -8,6 +8,14 @@ import type {
   HttpRequestSaveInput
 } from '@shared/ipc-contract'
 
+/**
+ * HTTP 格式转换器集合。
+ * 负责把外部常见格式和内部 `HttpRequestSaveInput` / `HttpRequestRecord` 互转，
+ * 覆盖 cURL、HTTPie、Postman、OpenAPI、Apifox 等工具链。
+ *
+ * 设计取舍是优先保留请求编辑器真正会消费的核心字段，
+ * 不追求第三方平台扩展语义的完全无损往返。
+ */
 const HTTP_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 const POSTMAN_SCHEMA_URL = 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
 const OPENAPI_VERSION = '3.0.3'
@@ -164,6 +172,9 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
+/**
+ * 所有导入入口都先把 method 收敛到内部支持集合，非法值统一回退 GET。
+ */
 function normalizeMethod(value: string | undefined): HttpMethod {
   const method = String(value ?? '').toUpperCase()
   return HTTP_METHODS.includes(method as HttpMethod) ? (method as HttpMethod) : 'GET'
@@ -184,6 +195,10 @@ function stringifyExample(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
+/**
+ * OpenAPI / Apifox 的示例可能散落在 example、examples、schema.default 等不同层级。
+ * 这里统一做一轮尽力提取，目标是导入后能得到可编辑的请求样例。
+ */
 function exampleFromMedia(media: OpenApiMediaType | undefined): unknown {
   if (!media) return undefined
   if ('example' in media) return media.example
@@ -197,6 +212,9 @@ function exampleFromMedia(media: OpenApiMediaType | undefined): unknown {
   return exampleFromSchema(media.schema)
 }
 
+/**
+ * 当 schema 本身没有示例时，按类型生成最朴素的默认值作为兜底。
+ */
 function exampleFromSchema(schema: JsonSchemaLike | undefined): unknown {
   if (!schema) return undefined
   if (schema.example !== undefined) return schema.example
@@ -215,6 +233,9 @@ function exampleFromSchema(schema: JsonSchemaLike | undefined): unknown {
   return undefined
 }
 
+/**
+ * form-urlencoded 在内部仍以文本表示，因此需要把对象示例压成查询串。
+ */
 function formExampleFromSchema(schema: JsonSchemaLike | undefined): string {
   const example = exampleFromSchema(schema)
   if (!example || typeof example !== 'object' || Array.isArray(example)) return ''
@@ -226,6 +247,10 @@ function formExampleFromSchema(schema: JsonSchemaLike | undefined): string {
   return params.toString()
 }
 
+/**
+ * 把 OpenAPI content 映射到内部的 body 结构。
+ * 当前仅覆盖 json / form / text 这几类工具页已有编辑能力的形态。
+ */
 function bodyFromOpenApiContent(content: Record<string, OpenApiMediaType> | undefined): HttpBody {
   if (!content) return { type: 'none', content: '' }
 
@@ -241,6 +266,7 @@ function bodyFromOpenApiContent(content: Record<string, OpenApiMediaType> | unde
     type.includes('application/x-www-form-urlencoded')
   )
   if (formEntry) {
+    // 表单体优先使用对象示例，缺失时再回退到 schema 推断。
     const example = exampleFromMedia(formEntry[1])
     const contentText =
       example && typeof example === 'object' && !Array.isArray(example)
@@ -281,6 +307,9 @@ function buildUrlFromOpenApiPath(path: string, servers: OpenApiDocument['servers
   return `${serverUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
 }
 
+/**
+ * 参数值提取兼容 OpenAPI 和 Apifox 的字段命名差异。
+ */
 function valueFromParameter(parameter: OpenApiParameter | ApifoxParameter): string {
   if ('example' in parameter && parameter.example !== undefined) {
     return stringifyExample(parameter.example)
@@ -293,6 +322,9 @@ function valueFromParameter(parameter: OpenApiParameter | ApifoxParameter): stri
   return ''
 }
 
+/**
+ * 内部请求模型只区分 header 和 param；cookie 参数当前不单独建模，因此跳过。
+ */
 function openApiParametersToRequestParts(parameters: OpenApiParameter[]): {
   headers: Array<Partial<HttpKeyValue>>
   params: Array<Partial<HttpKeyValue>>
@@ -317,10 +349,16 @@ function openApiParametersToRequestParts(parameters: OpenApiParameter[]): {
   return { headers, params }
 }
 
+/**
+ * 统一追加来源标签，并对重复值去重。
+ */
 function appendUniqueTags(tags: string[], requiredTag: string): string[] {
   return Array.from(new Set([...tags.filter(Boolean), requiredTag]))
 }
 
+/**
+ * 导出时尽量拆出可复用的 serverUrl，同时保留 query 参数供 OpenAPI parameter 使用。
+ */
 function parseRequestUrlForExport(url: string): {
   serverUrl?: string
   path: string
@@ -346,6 +384,9 @@ function parseRequestUrlForExport(url: string): {
   }
 }
 
+/**
+ * 导出第三方文档时对敏感 header 做脱敏，避免把真实密钥写进可分享文件。
+ */
 function redactedHeaderValue(header: HttpKeyValue): string {
   return SENSITIVE_HEADERS.has(header.key.toLowerCase().trim()) ? '***REDACTED***' : header.value
 }
@@ -399,6 +440,9 @@ function parseHeader(value: string): Partial<HttpKeyValue> {
   )
 }
 
+/**
+ * 轻量 shell 分词器，只覆盖 cURL 文本导入的常见场景，不尝试实现完整 shell 语法。
+ */
 function splitShellWords(input: string): string[] {
   const words: string[] = []
   let current = ''
@@ -457,6 +501,9 @@ function splitShellWords(input: string): string[] {
   return words
 }
 
+/**
+ * body 类型识别优先看 Content-Type，其次再依据文本形态兜底。
+ */
 function detectBodyType(
   headers: Array<Partial<HttpKeyValue>>,
   bodyContent: string
@@ -484,6 +531,9 @@ function requestBodyForExport(request: HttpRequestRecord): string {
   return request.body.type === 'none' ? '' : request.body.content
 }
 
+/**
+ * 导出时只保留启用且非空的 key/value 项，避免把 UI 草稿行写进目标格式。
+ */
 function enabledKeyValues(values: HttpKeyValue[]): HttpKeyValue[] {
   return values.filter((item) => item.enabled !== false && (item.key || item.value))
 }
@@ -499,6 +549,10 @@ function postmanUrlToString(value: PostmanRequest['url']): string {
   return value?.raw ?? ''
 }
 
+/**
+ * Postman 目录是树结构，真正请求节点与文件夹节点混在一起。
+ * 这里先拍平成请求列表，后续解析逻辑就能统一处理。
+ */
 function collectPostmanItems(items: PostmanItem[] | undefined): PostmanItem[] {
   const result: PostmanItem[] = []
 
@@ -512,6 +566,9 @@ function collectPostmanItems(items: PostmanItem[] | undefined): PostmanItem[] {
   return result
 }
 
+/**
+ * Postman auth 只映射当前内部模型支持的 bearer/basic 两类。
+ */
 function postmanAuthToRequestAuth(auth: PostmanRequest['auth']): Partial<HttpAuth> | undefined {
   if (auth?.type === 'bearer') {
     return {
@@ -531,6 +588,9 @@ function postmanAuthToRequestAuth(auth: PostmanRequest['auth']): Partial<HttpAut
   return undefined
 }
 
+/**
+ * Apifox 可能导出成 Postman / OpenAPI 兼容结构，因此先做格式探测。
+ */
 function hasPostmanSchema(input: unknown): boolean {
   const candidate = input as PostmanCollection
   return Boolean(candidate.info?.schema?.includes('postman') || candidate.item)
@@ -584,6 +644,9 @@ function bodyFromApifoxRequestBody(body: ApifoxApi['requestBody']): HttpBody {
   return { type: 'none', content: '' }
 }
 
+/**
+ * 导出为 Apifox item 时复用统一脱敏逻辑，避免泄露认证头。
+ */
 function requestToApifoxItem(request: HttpRequestRecord): ApifoxItem {
   const parameters = {
     query: enabledKeyValues(request.params).map((param) => ({
@@ -627,6 +690,11 @@ function requestToApifoxItem(request: HttpRequestRecord): ApifoxItem {
 }
 
 export function parseCurlCommand(input: string, collectionId?: string): HttpRequestSaveInput {
+  /**
+   * cURL 导入入口。
+   * 覆盖常见的 `-X/-H/-d/-u/--url` 用法，不识别的参数默认忽略，
+   * 目标是让用户从终端复制常见命令后能快速得到请求草稿。
+   */
   const words = splitShellWords(input.replace(/\\\r?\n/g, ' '))
   if (words[0] !== 'curl') {
     throw new Error('当前只支持以 curl 开头的命令')
@@ -660,6 +728,7 @@ export function parseCurlCommand(input: string, collectionId?: string): HttpRequ
     }
 
     if (word === '-d' || word === '--data' || word === '--data-raw' || word === '--data-binary') {
+      // 只要出现 data 且未显式指定 method，就按 cURL 的常见语义推断为 POST。
       bodyContent = next ?? ''
       if (!method) method = 'POST'
       index += 1
@@ -718,6 +787,9 @@ export function parseCurlCommand(input: string, collectionId?: string): HttpRequ
 }
 
 export function exportRequestAsCurl(request: HttpRequestRecord): string {
+  /**
+   * cURL 导出会把 auth 统一折算为 Authorization header，方便直接复制执行。
+   */
   const parts = ['curl', '-X', request.method, shellQuote(request.url)]
   const headers = [...enabledKeyValues(request.headers)]
   const auth = authHeader(request.auth)
@@ -736,6 +808,9 @@ export function exportRequestAsCurl(request: HttpRequestRecord): string {
 }
 
 export function exportRequestAsHttpie(request: HttpRequestRecord): string {
+  /**
+   * HTTPie 导出复用同一份归一化请求数据，只调整命令格式。
+   */
   const parts = ['http', request.method, shellQuote(request.url)]
   const headers = [...enabledKeyValues(request.headers)]
   const auth = authHeader(request.auth)
@@ -757,6 +832,9 @@ export function parsePostmanCollection(
   input: string,
   collectionId?: string
 ): HttpRequestSaveInput[] {
+  /**
+   * Postman 导入前先拍平目录树，再把请求节点映射为内部结构。
+   */
   const parsed = JSON.parse(input) as PostmanCollection
   const items = collectPostmanItems(parsed.item)
 
@@ -800,6 +878,9 @@ export function parsePostmanCollection(
 }
 
 export function parseOpenApiDocument(input: string, collectionId?: string): HttpRequestSaveInput[] {
+  /**
+   * OpenAPI 导入按 path + method 展开成多条内部请求草稿。
+   */
   const parsed = JSON.parse(input) as OpenApiDocument
   const requests: HttpRequestSaveInput[] = []
 
@@ -842,6 +923,9 @@ export function parseApifoxCollection(
   input: string,
   collectionId?: string
 ): HttpRequestSaveInput[] {
+  /**
+   * Apifox 导入兼容 OpenAPI 兼容导出、Postman 兼容导出和 Apifox 自有树结构三种来源。
+   */
   const parsed = JSON.parse(input) as ApifoxDocument | OpenApiDocument | PostmanCollection
 
   if ('openapi' in parsed || 'swagger' in parsed) {
@@ -902,6 +986,9 @@ export function exportCollectionAsOpenApi(
   collection: HttpCollection,
   requests: HttpRequestRecord[]
 ): string {
+  /**
+   * OpenAPI 导出按 path 聚合请求，再把 method 挂到 operation 上。
+   */
   const servers = new Set<string>()
   const paths: NonNullable<OpenApiDocument['paths']> = {}
   const securitySchemes: Record<string, unknown> = {}
@@ -910,6 +997,7 @@ export function exportCollectionAsOpenApi(
     const parsed = parseRequestUrlForExport(request.url)
     if (parsed.serverUrl) servers.add(parsed.serverUrl)
 
+    // content-type 由 requestBody 语义表达，不重复塞进 header parameters。
     const enabledHeaders = enabledKeyValues(request.headers).filter(
       (header) => header.key.toLowerCase() !== 'content-type'
     )
@@ -983,6 +1071,9 @@ export function exportCollectionAsPostman(
   collection: HttpCollection,
   requests: HttpRequestRecord[]
 ): string {
+  /**
+   * Postman 导出更关注“导回 Postman 后可继续编辑”，因此结构尽量贴近其原生模型。
+   */
   const document: PostmanCollection = {
     info: {
       name: collection.name,
@@ -1038,6 +1129,9 @@ export function exportCollectionAsApifox(
   collection: HttpCollection,
   requests: HttpRequestRecord[]
 ): string {
+  /**
+   * Apifox 导出当前采用单根目录包裹所有请求，保证结构简单直观。
+   */
   const document: ApifoxDocument = {
     info: {
       name: collection.name,

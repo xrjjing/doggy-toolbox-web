@@ -17,6 +17,19 @@ import {
 import type { CredentialRecord } from '@shared/ipc-contract'
 import { useCredentialsStore } from '@renderer/stores/credentials'
 
+/**
+ * 凭证管理页负责 renderer 侧的交互编排，不负责真正的密码存储策略。
+ *
+ * 真实链路：
+ * UI -> credentialsStore -> window.doggy(preload)
+ * -> ipcMain.handle('credentials:*') -> CredentialService -> secret codec / repository
+ *
+ * 这样分层的原因是：
+ * - 页面可以专注于表单、遮罩显示和复制行为。
+ * - store 统一负责刷新状态与调用主进程。
+ * - preload / IPC 只暴露白名单方法，renderer 不直接碰 Electron 能力。
+ * - CredentialService 作为安全边界，统一处理密码编码、解码和落盘。
+ */
 type CredentialFormState = {
   id?: string
   service: string
@@ -29,7 +42,9 @@ type CredentialFormState = {
 const message = useMessage()
 const credentialsStore = useCredentialsStore()
 const modalVisible = ref(false)
+// 仅控制当前页面“是否展示明文密码”，不会写回 store，也不会修改持久化记录。
 const revealedIds = ref(new Set<string>())
+// 表单保持字符串态，提交时再映射为 CredentialSaveInput，便于与输入框交互保持一致。
 const form = reactive<CredentialFormState>({
   id: '',
   service: '',
@@ -39,6 +54,7 @@ const form = reactive<CredentialFormState>({
   extraText: ''
 })
 
+// 顶部统计与底部元信息都来自 store snapshot，页面不再维护第二份凭证数据。
 const stats = computed(() => ({
   total: credentialsStore.credentials.length,
   visible: credentialsStore.visibleCredentials.length,
@@ -54,6 +70,7 @@ function formatUpdatedAt(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
+// 仅用于界面遮罩展示；真实密码值仍保留在卡片数据里，复制动作直接使用原值。
 function maskPassword(value: string): string {
   if (!value) return '未填写'
   return '•'.repeat(Math.min(Math.max(value.length, 6), 18))
@@ -63,6 +80,7 @@ function isRevealed(id: string): boolean {
   return revealedIds.value.has(id)
 }
 
+// Set 需要整体替换为新实例，才能稳定触发 Vue 对集合变更的响应式更新。
 function toggleReveal(id: string): void {
   const next = new Set(revealedIds.value)
   if (next.has(id)) {
@@ -73,6 +91,7 @@ function toggleReveal(id: string): void {
   revealedIds.value = next
 }
 
+// 复制账号/密码属于纯 renderer 行为：输入是当前卡片值，输出是系统剪贴板文本。
 async function copyText(value: string, label: string): Promise<void> {
   if (!value) {
     message.warning(`${label} 为空`)
@@ -87,6 +106,7 @@ async function copyText(value: string, label: string): Promise<void> {
   }
 }
 
+// 新建凭证时清空所有敏感字段，避免编辑态残留带入新增流程。
 function openCreateModal(): void {
   form.id = ''
   form.service = ''
@@ -97,6 +117,7 @@ function openCreateModal(): void {
   modalVisible.value = true
 }
 
+// 编辑时把持久化记录回填为 UI 表单态，其中 extra 数组转换为多行文本。
 function openEditModal(credential: CredentialRecord): void {
   form.id = credential.id
   form.service = credential.service
@@ -107,6 +128,8 @@ function openEditModal(credential: CredentialRecord): void {
   modalVisible.value = true
 }
 
+// 页面层只做最小结构映射：extraText -> extra:string[]。
+// 真正的 trim、空行清理、编码和排序都由 CredentialService 统一处理。
 async function submitCredential(): Promise<void> {
   try {
     await credentialsStore.saveCredential({
@@ -124,6 +147,7 @@ async function submitCredential(): Promise<void> {
   }
 }
 
+// 删除只传 credential id；删除结果与最新快照由 store 负责重新拉取。
 async function deleteCredential(credentialId: string): Promise<void> {
   try {
     const ok = await credentialsStore.removeCredential(credentialId)
@@ -138,6 +162,7 @@ async function deleteCredential(credentialId: string): Promise<void> {
 }
 
 onMounted(() => {
+  // 只在首次进入时拉取数据，避免页面回切时重复请求打断当前搜索和显示态。
   if (!credentialsStore.hasLoaded) {
     void credentialsStore.load()
   }
@@ -188,6 +213,7 @@ onMounted(() => {
           @update:value="credentialsStore.setSearch"
         />
         <NSpace>
+          <!-- 刷新会重新获取主进程解码后的凭证快照，renderer 不自行缓存独立副本。 -->
           <NButton secondary :loading="credentialsStore.loading" @click="credentialsStore.load">
             刷新
           </NButton>
@@ -197,6 +223,7 @@ onMounted(() => {
     </NCard>
 
     <div v-if="credentialsStore.visibleCredentials.length > 0" class="credentials-grid">
+      <!-- 当前卡片列表是 store 基于搜索条件派生出的可见子集。 -->
       <NCard
         v-for="credential in credentialsStore.visibleCredentials"
         :key="credential.id"
@@ -275,6 +302,7 @@ onMounted(() => {
     class="form-modal command-form-modal"
   >
     <NForm>
+      <!-- 表单中的多行附加信息只是输入形态，提交后会被转换为合约里的字符串数组。 -->
       <NFormItem label="服务名称">
         <NInput
           v-model:value="form.service"

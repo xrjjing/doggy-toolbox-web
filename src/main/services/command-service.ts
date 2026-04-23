@@ -114,6 +114,10 @@ function sortCommands(commands: CommandRecord[], tabs: CommandTab[]): CommandRec
   })
 }
 
+/**
+ * 命令模块的主进程持久化服务。
+ * renderer 不直接编辑 JSON，而是通过这里统一做输入清洗、默认分组兜底和排序。
+ */
 export class CommandService {
   private readonly paths
   private readonly repository
@@ -209,6 +213,7 @@ export class CommandService {
           lines,
           tabId: resolvedTabId,
           tags,
+          // 跨分组移动时重新分配顺序，避免不同分组的 order 直接冲突。
           order:
             current.tabId === resolvedTabId
               ? current.order
@@ -301,6 +306,7 @@ export class CommandService {
     const raw = await this.repository.read()
     const normalized = normalizeState(raw)
 
+    // 发现历史文件结构漂移时立即自愈，后续读取都基于统一格式。
     if (JSON.stringify(raw) !== JSON.stringify(normalized)) {
       await this.repository.write(normalized)
     }

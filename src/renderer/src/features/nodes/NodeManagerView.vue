@@ -15,9 +15,24 @@ import {
   useMessage
 } from 'naive-ui'
 import type { NodeRecord } from '@shared/ipc-contract'
+import { useAiSettingsStore } from '@renderer/stores/ai-settings'
+import { useAiStore } from '@renderer/stores/ai'
 import { useNodesStore } from '@renderer/stores/nodes'
 import { parseNodeShareLinks } from './node-converters'
 
+/**
+ * 节点管理页是本地节点资料库的 renderer 交互层：
+ * - 展示节点卡片、标签筛选和搜索结果。
+ * - 维护手工录入/编辑节点的表单。
+ * - 把多行分享链接解析成 NodeSaveInput 后逐条交给 store 保存。
+ *
+ * 真实链路：
+ * UI -> nodesStore -> window.doggy(preload)
+ * -> ipcMain.handle('nodes:*') -> NodeService -> JsonFileRepository
+ *
+ * 这样分层的目的，是让页面专注于输入组织和反馈展示；
+ * 真正的端口校验、标签清洗、结构规范化与落盘都在主进程统一执行。
+ */
 type NodeFormState = {
   id?: string
   name: string
@@ -30,10 +45,14 @@ type NodeFormState = {
 }
 
 const message = useMessage()
+const aiStore = useAiStore()
+const aiSettingsStore = useAiSettingsStore()
 const nodesStore = useNodesStore()
 const modalVisible = ref(false)
 const importModalVisible = ref(false)
+// 导入弹窗中的原始文本仅用于一次性解析，解析成功后会被清空。
 const importText = ref('')
+// 表单保留字符串态，尤其端口先按文本编辑，提交时再规整成数值。
 const form = reactive<NodeFormState>({
   id: '',
   name: '',
@@ -45,6 +64,7 @@ const form = reactive<NodeFormState>({
   configText: ''
 })
 
+// 统计卡片和标签侧栏都依赖 store snapshot，页面不再维护第二份节点列表。
 const stats = computed(() => ({
   total: nodesStore.nodes.length,
   visible: nodesStore.visibleNodes.length,
@@ -58,6 +78,7 @@ function formatUpdatedAt(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
+// endpoint 只是卡片展示字段，用于把 server/port 合并成更易扫读的文本。
 function formatEndpoint(node: NodeRecord): string {
   if (!node.server && !node.port) return '未填写地址'
   if (!node.server) return `:${node.port}`
@@ -65,6 +86,7 @@ function formatEndpoint(node: NodeRecord): string {
   return `${node.server}:${node.port}`
 }
 
+// 复制链接/配置文本属于本地 renderer 能力，不需要经过 store 或 IPC。
 async function copyText(value: string, label: string): Promise<void> {
   if (!value) {
     message.warning(`${label} 为空`)
@@ -79,6 +101,7 @@ async function copyText(value: string, label: string): Promise<void> {
   }
 }
 
+// 新建节点时清空所有字段，避免编辑态或导入态数据串入新记录。
 function openCreateModal(): void {
   form.id = ''
   form.name = ''
@@ -91,6 +114,7 @@ function openCreateModal(): void {
   modalVisible.value = true
 }
 
+// 编辑时把持久化记录回填为表单态；端口转回字符串，保持输入体验一致。
 function openEditModal(node: NodeRecord): void {
   form.id = node.id
   form.name = node.name
@@ -103,6 +127,7 @@ function openEditModal(node: NodeRecord): void {
   modalVisible.value = true
 }
 
+// 页面只做宽松的文本 -> 数字转换；最终范围校验仍由 NodeService 负责。
 function normalizePort(value: string): number {
   const parsed = Number(value.trim())
   if (!Number.isFinite(parsed)) {
@@ -111,6 +136,10 @@ function normalizePort(value: string): number {
   return Math.trunc(parsed)
 }
 
+// 页面层提交时仅做最小结构整理：
+// - portText -> port:number
+// - tagsText -> tags:string[]
+// 真正的 trim、去重、端口范围校验在主进程执行。
 async function submitNode(): Promise<void> {
   try {
     await nodesStore.saveNode({
@@ -130,6 +159,7 @@ async function submitNode(): Promise<void> {
   }
 }
 
+// 删除只传节点 id；删除后的最新节点列表和标签集合由 store 重新加载。
 async function deleteNode(nodeId: string): Promise<void> {
   try {
     const ok = await nodesStore.removeNode(nodeId)
@@ -143,6 +173,10 @@ async function deleteNode(nodeId: string): Promise<void> {
   }
 }
 
+// 分享链接解析刻意放在 renderer：
+// - 输入是用户粘贴的原始多行文本。
+// - 输出是多个 NodeSaveInput。
+// 但入库仍逐条走 nodesStore.saveNode，避免绕过主进程校验和落盘规则。
 async function importShareLinks(): Promise<void> {
   try {
     const nodes = parseNodeShareLinks(importText.value)
@@ -157,8 +191,62 @@ async function importShareLinks(): Promise<void> {
   }
 }
 
+/**
+ * 节点页 AI 入口只解释当前节点资料，不参与任何远程探测或订阅操作。
+ * 重点是帮助用户理解标签分组、链接类型和配置文本里可能的风险点。
+ */
+async function explainNodesWithAi(): Promise<void> {
+  if (!nodesStore.hasLoaded) {
+    await nodesStore.load()
+  }
+
+  const visibleNodes = nodesStore.visibleNodes.slice(0, 10)
+  if (visibleNodes.length === 0) {
+    message.warning('当前没有可分析的节点资料')
+    return
+  }
+
+  const prompt = [
+    '请对当前节点资料做一次中文说明和风险复查。',
+    '要求：',
+    '1. 总结当前节点类型、地区或标签的分布情况。',
+    '2. 指出命名不清、标签不一致或配置字段可疑的节点。',
+    '3. 如果原始链接或配置文本缺失明显关键信息，请直接指出。',
+    '',
+    `当前标签筛选：${activeTagLabel.value}`,
+    `当前搜索词：${nodesStore.search || '无'}`,
+    '',
+    '节点清单：',
+    visibleNodes
+      .map(
+        (node, index) =>
+          `${index + 1}. ${node.name}\n类型：${node.type || '无'}\n地址：${formatEndpoint(
+            node
+          )}\n标签：${node.tags.join(', ') || '无'}\n原始链接：${
+            node.rawLink || '无'
+          }\n配置文本：\n${node.configText || '无'}`
+      )
+      .join('\n\n')
+  ].join('\n')
+
+  try {
+    await aiStore.startChat({
+      moduleId: 'nodes',
+      title: '节点资料 AI 说明',
+      prompt
+    })
+    message.success('节点资料已发送到 AI Bridge，请到 AI 页面查看会话结果。')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 onMounted(() => {
+  // 首次进入页面就同步主进程快照，让标签筛选、编辑和导入都基于真实存量数据。
   void nodesStore.load()
+  if (!aiSettingsStore.hasLoaded) {
+    void aiSettingsStore.load()
+  }
 })
 </script>
 
@@ -207,6 +295,7 @@ onMounted(() => {
       </template>
 
       <div class="commands-tab-list">
+        <!-- 标签切换只是前端过滤条件，不会直接改动存储中的 tags 数据。 -->
         <button
           class="tool-nav-item commands-tab-item"
           :class="{ active: !nodesStore.activeTag }"
@@ -254,7 +343,15 @@ onMounted(() => {
             @update:value="nodesStore.setSearch"
           />
           <NSpace>
+            <!-- 刷新会重走完整保存链路的读路径，重新同步当前节点快照。 -->
             <NButton secondary :loading="nodesStore.loading" @click="nodesStore.load">刷新</NButton>
+            <NButton
+              secondary
+              :disabled="!aiSettingsStore.isFeatureEnabled('nodes')"
+              @click="explainNodesWithAi"
+            >
+              AI 说明
+            </NButton>
             <NButton secondary @click="importModalVisible = true">导入分享链接</NButton>
             <NButton type="primary" @click="openCreateModal">新增节点</NButton>
           </NSpace>
@@ -262,6 +359,7 @@ onMounted(() => {
       </NCard>
 
       <div v-if="nodesStore.visibleNodes.length > 0" class="nodes-grid">
+        <!-- 当前列表是 search + activeTag 双重过滤后的节点子集，不是额外持久化集合。 -->
         <NCard
           v-for="node in nodesStore.visibleNodes"
           :key="node.id"
@@ -340,6 +438,7 @@ onMounted(() => {
     class="form-modal"
   >
     <NForm>
+      <!-- 导入弹窗只负责接收原始分享链接文本；真正入库仍逐条走 store/saveNode。 -->
       <NFormItem label="分享链接">
         <NInput
           v-model:value="importText"
@@ -364,6 +463,7 @@ onMounted(() => {
     class="form-modal command-form-modal"
   >
     <NForm>
+      <!-- 手工录入与分享链接导入最终都会收敛成同一种 NodeSaveInput，再走同一条保存链路。 -->
       <NFormItem label="节点名称">
         <NInput v-model:value="form.name" placeholder="例如：新加坡实验线 / 家宽备用节点" />
       </NFormItem>

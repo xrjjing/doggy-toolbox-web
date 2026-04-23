@@ -7,10 +7,18 @@ import type {
 import type { AiProviderBridge, AiProviderRunContext } from './ai-provider-router'
 import { LocalAiRuntimeService } from './local-ai-runtime-service'
 
+/**
+ * 当前 renderer 传入的是轻量消息数组，这里先压平成单段 prompt 交给 Codex 线程。
+ * 后续若要升级成更细粒度的多消息协议，可以只在 bridge 层调整而不影响 UI。
+ */
 function buildPrompt(messages: AiStartChatInput['messages']): string {
   return messages.map((message) => `${message.role}: ${message.content}`).join('\n\n')
 }
 
+/**
+ * 把 Codex SDK 内部的工具/命令事件收敛成项目统一的 `tool` 事件，
+ * 让 renderer 不需要理解 provider 专有 item 类型。
+ */
 function createToolEvent(
   sessionId: string,
   toolId: string,
@@ -28,6 +36,10 @@ function createToolEvent(
   }
 }
 
+/**
+ * Codex SDK Bridge 负责读取本机 Codex 配置快照，并把 SDK 原始事件流翻译成统一协议。
+ * 历史落盘和窗口广播都不在这里做，而是交给上层会话服务。
+ */
 export class CodexSdkBridge implements AiProviderBridge {
   constructor(private readonly runtimeService: LocalAiRuntimeService) {}
 
@@ -49,12 +61,14 @@ export class CodexSdkBridge implements AiProviderBridge {
   async run(context: AiProviderRunContext): Promise<void> {
     const runtime = await this.getRuntime(context.input)
     const { Codex } = await import('@openai/codex-sdk')
+    // 仅透传 PATH，避免把主进程环境变量无差别注入到底层运行时。
     const codex = new Codex({
       baseUrl: runtime.baseUrl,
       env: process.env.PATH ? { PATH: process.env.PATH } : undefined
     })
     const thread = codex.startThread({
       workingDirectory: runtime.workingDirectory,
+      // 对配置做白名单归一化，避免脏值直接传给 SDK。
       approvalPolicy:
         runtime.approvalPolicy === 'never' ||
         runtime.approvalPolicy === 'on-failure' ||
@@ -77,6 +91,10 @@ export class CodexSdkBridge implements AiProviderBridge {
     })
     const seenTextByItem = new Map<string, string>()
 
+    /**
+     * Codex 某些事件回传的是累计文本而不是纯增量。
+     * 这里按 itemId 去重，只向上游发送真正新增的内容。
+     */
     const emitTextDelta = async (
       itemId: string,
       text: string,
@@ -96,6 +114,7 @@ export class CodexSdkBridge implements AiProviderBridge {
     }
 
     for await (const rawEvent of stream.events) {
+      // 取消信号由会话层统一管理，bridge 只负责尽快停止转发。
       if (context.abortSignal.aborted) break
 
       if (rawEvent.type === 'thread.started') {
@@ -128,6 +147,7 @@ export class CodexSdkBridge implements AiProviderBridge {
       }
 
       if (rawEvent.type === 'turn.failed' || rawEvent.type === 'error') {
+        // 错误上抛给会话层统一收口，保持 provider 行为一致。
         throw new Error(rawEvent.type === 'error' ? rawEvent.message : rawEvent.error.message)
       }
 
@@ -142,6 +162,7 @@ export class CodexSdkBridge implements AiProviderBridge {
           continue
         }
         if (item.type === 'command_execution') {
+          // 命令执行保留聚合输出，便于历史页回看本机执行过什么。
           await context.emit(
             createToolEvent(
               context.sessionId,
@@ -196,6 +217,7 @@ export class CodexSdkBridge implements AiProviderBridge {
           continue
         }
         if (item.type === 'file_change') {
+          // 文件变更只保留摘要，避免把大量文件内容塞进 IPC 事件流。
           await context.emit(
             createToolEvent(
               context.sessionId,

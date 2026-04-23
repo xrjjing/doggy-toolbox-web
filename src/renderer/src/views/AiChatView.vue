@@ -12,10 +12,13 @@ import {
   NTag,
   useMessage
 } from 'naive-ui'
+import AiSettingsView from '@renderer/features/ai/AiSettingsView.vue'
+import { useAiSettingsStore } from '@renderer/stores/ai-settings'
 import { useAiStore } from '@renderer/stores/ai'
 
 const message = useMessage()
 const aiStore = useAiStore()
+const aiSettingsStore = useAiSettingsStore()
 
 const providerLabel = computed(() =>
   aiStore.provider === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
@@ -39,7 +42,7 @@ function formatUpdatedAt(value: string): string {
 
 async function startChat(): Promise<void> {
   try {
-    await aiStore.startChat()
+    await aiStore.startChat({ moduleId: 'ai-chat' })
   } catch (error) {
     aiStore.running = false
     message.error(error instanceof Error ? error.message : String(error))
@@ -59,6 +62,9 @@ async function cancelChat(): Promise<void> {
 }
 
 onMounted(async () => {
+  if (!aiSettingsStore.hasLoaded) {
+    await aiSettingsStore.load()
+  }
   await aiStore.loadHistory()
   if (aiStore.sessions[0]) {
     await aiStore.loadSession(aiStore.sessions[0].id)
@@ -79,6 +85,8 @@ onBeforeUnmount(() => {
       Claude Code 配置，并把对话历史落到本地资料库。
     </p>
   </section>
+
+  <AiSettingsView />
 
   <div class="http-shell is-two-pane">
     <NCard class="soft-card http-collections-panel" :bordered="false">
@@ -126,7 +134,12 @@ onBeforeUnmount(() => {
         />
 
         <div class="action-row">
-          <NButton type="primary" :loading="aiStore.running" @click="startChat">
+          <NButton
+            type="primary"
+            :loading="aiStore.running"
+            :disabled="!aiSettingsStore.isFeatureEnabled('ai-chat')"
+            @click="startChat"
+          >
             发送到 {{ providerLabel }}
           </NButton>
           <NButton secondary :disabled="!aiStore.running" @click="cancelChat">取消</NButton>

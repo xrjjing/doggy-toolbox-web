@@ -2,6 +2,12 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { NodeModuleState, NodeRecord, NodeSaveInput } from '@shared/ipc-contract'
 
+/**
+ * 节点管理 store。
+ * 节点原始分享链接解析发生在 renderer 的 `node-converters.ts`，
+ * 但真正保存、删除、落盘时间更新仍在主进程，因此这里沿用“写后 reload”的一致收口方式。
+ */
+
 function matchesSearch(node: NodeRecord, normalizedSearch: string): boolean {
   if (!normalizedSearch) return true
 
@@ -44,6 +50,10 @@ export const useNodesStore = defineStore('nodes', () => {
     )
   )
 
+  /**
+   * 标签过滤器是从当前快照动态推导的。
+   * 当导入、删除或编辑导致标签集合变化时，需要及时把失效标签清空。
+   */
   function hydrateState(nextState: NodeModuleState): void {
     snapshot.value = nextState
     hasLoaded.value = true
@@ -53,6 +63,9 @@ export const useNodesStore = defineStore('nodes', () => {
     }
   }
 
+  /**
+   * 节点模块也统一从主进程回源，避免 renderer 自己维护 tags 去重和排序。
+   */
   async function load(): Promise<void> {
     loading.value = true
     try {
@@ -62,6 +75,9 @@ export const useNodesStore = defineStore('nodes', () => {
     }
   }
 
+  /**
+   * 保存完成后 reload，确保分享链接解析后的标准化字段和主进程生成字段一致。
+   */
   async function saveNode(input: NodeSaveInput): Promise<NodeRecord> {
     saving.value = true
     try {
@@ -73,6 +89,9 @@ export const useNodesStore = defineStore('nodes', () => {
     }
   }
 
+  /**
+   * 删除节点后不额外手工修补 visibleNodes，直接依赖新快照重算。
+   */
   async function removeNode(nodeId: string): Promise<boolean> {
     saving.value = true
     try {
@@ -96,6 +115,9 @@ export const useNodesStore = defineStore('nodes', () => {
     activeTag.value = ''
   }
 
+  /**
+   * 标签计数始终基于原始节点列表，而不是当前搜索结果。
+   */
   function countByTag(tag: string): number {
     return nodes.value.filter((node) => node.tags.includes(tag)).length
   }

@@ -15,6 +15,10 @@ export type CredentialSecretCodec = {
   decode: (value: string) => string
 }
 
+/**
+ * 凭证落盘时不直接保存明文密码，而是保存带编码方式的 secret。
+ * 这样主进程可以按当前机器能力切换 plain 或 safeStorage 编码。
+ */
 type StoredCredentialRecord = Omit<CredentialRecord, 'password'> & {
   passwordSecret: string
   passwordEncoding: PasswordEncoding
@@ -65,6 +69,10 @@ function isStoredCredentialRecord(value: unknown): value is StoredCredentialReco
   return typeof value === 'object' && value !== null && 'id' in value
 }
 
+/**
+ * 凭证服务是主进程中的安全边界。
+ * renderer 只能拿到解码后的展示结果；真正的编码、解码和落盘都在这里完成。
+ */
 export class CredentialService {
   private readonly paths
   private readonly repository
@@ -100,6 +108,7 @@ export class CredentialService {
     let savedCredential: CredentialRecord | null = null
 
     await this.updateState((state) => {
+      // 先转成明文记录操作，再统一编码回存储结构，减少更新分支的心智负担。
       const credentials = this.toPlainRecords(state)
       const existingIndex = credentials.findIndex((credential) => credential.id === input.id)
 
@@ -252,6 +261,7 @@ export class CredentialService {
       version: 1,
       updatedAt: source.updatedAt || fallback.updatedAt,
       secretEncoding: source.secretEncoding || this.secretCodec.encoding,
+      // 统一走“解码 -> 归一化 -> 重新编码”，收敛历史遗留的不同格式。
       credentials: this.fromPlainRecords({
         version: 1,
         updatedAt: source.updatedAt || fallback.updatedAt,
@@ -269,6 +279,7 @@ export class CredentialService {
         url: credential.url,
         account: credential.account,
         password:
+          // 只有编码方式匹配当前 codec 时才 decode，否则保留原值兼容历史数据。
           credential.passwordEncoding === this.secretCodec.encoding
             ? this.safeDecode(credential.passwordSecret)
             : credential.passwordSecret,
@@ -318,6 +329,7 @@ export class CredentialService {
     try {
       return this.secretCodec.decode(secret)
     } catch {
+      // 单条凭证损坏不能拖垮整个模块读取。
       return ''
     }
   }

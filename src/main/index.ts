@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { AiBridgeService } from './services/ai-bridge'
 import { AiChatHistoryService } from './services/ai-chat-history-service'
 import { AiProviderRouter } from './services/ai-provider-router'
+import { AiSettingsService } from './services/ai-settings-service'
 import { AiSessionService } from './services/ai-session-service'
 import { BackupService } from './services/backup-service'
 import { ClaudeAgentBridge } from './services/claude-agent-bridge'
@@ -22,6 +23,7 @@ import { PromptService } from './services/prompt-service'
 import { LegacyImportService } from './services/legacy-import-service'
 import { getRuntimeInfo } from './utils/runtime'
 import type {
+  AiSettingsSaveInput,
   AiStartChatInput,
   BackupExportInput,
   BackupImportInput,
@@ -44,6 +46,7 @@ import type {
 let mainWindow: BrowserWindow | null = null
 let aiBridge: AiBridgeService
 let aiChatHistoryService: AiChatHistoryService
+let aiSettingsService: AiSettingsService
 let aiSessionService: AiSessionService
 let aiRuntimeService: LocalAiRuntimeService
 let commandService: CommandService
@@ -54,6 +57,10 @@ let backupService: BackupService
 let legacyImportService: LegacyImportService
 let nodeService: NodeService
 
+/**
+ * 凭证只允许在主进程内做加解密。
+ * 这里根据 Electron `safeStorage` 能力动态选择编码器，renderer 永远拿不到系统加密入口。
+ */
 function createCredentialSecretCodec(): CredentialSecretCodec {
   if (!safeStorage.isEncryptionAvailable()) {
     return plainCredentialSecretCodec
@@ -66,6 +73,10 @@ function createCredentialSecretCodec(): CredentialSecretCodec {
   }
 }
 
+/**
+ * 主窗口只承载 renderer。
+ * 真正的系统能力一律通过 preload + IPC 进入主进程 service，避免页面层直接接触 Node 权限。
+ */
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -79,6 +90,7 @@ function createWindow(): void {
     trafficLightPosition: { x: 16, y: 16 },
     icon,
     webPreferences: {
+      // 只暴露 preload 白名单 API，renderer 本身没有 Node/Electron 直连能力。
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       nodeIntegration: false,
@@ -91,6 +103,7 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
+    // 外链统一交给系统浏览器，减少在应用内打开未知网页的安全面。
     void shell.openExternal(details.url)
     return { action: 'deny' }
   })
@@ -102,8 +115,20 @@ function createWindow(): void {
   }
 }
 
+/**
+ * 主进程统一装配业务能力和 IPC 通道。
+ *
+ * 调用链固定为：
+ * Renderer -> preload 白名单 API -> ipcMain.handle -> service -> 本地 JSON / 本机 SDK / fetch
+ *
+ * 这样分层的目的：
+ * 1. renderer 只消费显式合约，不可任意拼 channel。
+ * 2. service 可以独立做输入归一化、异常处理和持久化。
+ * 3. 所有跨进程入口集中在一个文件里，方便核对真实调用链。
+ */
 function registerIpc(): void {
   aiChatHistoryService = new AiChatHistoryService(app.getPath('userData'))
+  aiSettingsService = new AiSettingsService(app.getPath('userData'))
   aiRuntimeService = new LocalAiRuntimeService()
   const providerRouter = new AiProviderRouter(
     {
@@ -124,6 +149,7 @@ function registerIpc(): void {
   nodeService = new NodeService(app.getPath('userData'))
   promptService = new PromptService(app.getPath('userData'))
   backupService = new BackupService({
+    aiSettingsService,
     commandService,
     credentialService,
     httpCollectionService,
@@ -137,13 +163,20 @@ function registerIpc(): void {
     promptService
   })
 
+  // Runtime / AI
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
   ipcMain.handle('ai:get-history-state', () => aiChatHistoryService.getState())
   ipcMain.handle('ai:get-session', (_event, sessionId: string) =>
     aiChatHistoryService.getSession(sessionId)
   )
+  ipcMain.handle('ai:get-settings-state', () => aiSettingsService.getState())
+  ipcMain.handle('ai:save-settings', (_event, input: AiSettingsSaveInput) =>
+    aiSettingsService.saveSettings(input)
+  )
   ipcMain.handle('ai:start-chat', (_event, input: AiStartChatInput) => aiBridge.startChat(input))
   ipcMain.handle('ai:cancel-chat', (_event, sessionId: string) => aiBridge.cancelChat(sessionId))
+
+  // Commands
   ipcMain.handle('commands:get-state', () => commandService.getState())
   ipcMain.handle('commands:save-tab', (_event, input: CommandTabSaveInput) =>
     commandService.saveTab(input)
@@ -154,6 +187,8 @@ function registerIpc(): void {
   ipcMain.handle('commands:delete-command', (_event, commandId: string) =>
     commandService.deleteCommand(commandId)
   )
+
+  // Credentials
   ipcMain.handle('credentials:get-state', () => credentialService.getState())
   ipcMain.handle('credentials:save', (_event, input: CredentialSaveInput) =>
     credentialService.saveCredential(input)
@@ -161,9 +196,13 @@ function registerIpc(): void {
   ipcMain.handle('credentials:delete', (_event, credentialId: string) =>
     credentialService.deleteCredential(credentialId)
   )
+
+  // Nodes
   ipcMain.handle('nodes:get-state', () => nodeService.getState())
   ipcMain.handle('nodes:save', (_event, input: NodeSaveInput) => nodeService.saveNode(input))
   ipcMain.handle('nodes:delete', (_event, nodeId: string) => nodeService.deleteNode(nodeId))
+
+  // HTTP collections
   ipcMain.handle('http-collections:get-state', () => httpCollectionService.getState())
   ipcMain.handle('http-collections:save-collection', (_event, input: HttpCollectionSaveInput) =>
     httpCollectionService.saveCollection(input)
@@ -189,6 +228,8 @@ function registerIpc(): void {
   ipcMain.handle('http-collections:clear-history', (_event, input?: HttpClearHistoryInput) =>
     httpCollectionService.clearHistory(input)
   )
+
+  // Prompt templates
   ipcMain.handle('prompts:get-state', () => promptService.getState())
   ipcMain.handle('prompts:save-category', (_event, input: PromptCategorySaveInput) =>
     promptService.saveCategory(input)
@@ -211,6 +252,8 @@ function registerIpc(): void {
   ipcMain.handle('prompts:parse-variables', (_event, content: string) =>
     promptService.parseVariables(content)
   )
+
+  // Backup / legacy import
   ipcMain.handle('backup:export', (_event, input?: BackupExportInput) =>
     backupService.exportBackup(input)
   )

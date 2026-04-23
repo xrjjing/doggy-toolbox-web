@@ -43,6 +43,10 @@ const MAX_HISTORY_TOTAL = 500
 const MAX_HISTORY_RESPONSE_BODY_CHARS = 100_000
 const VARIABLE_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g
 
+/**
+ * 单次执行上下文。
+ * 它把原始请求、选中的环境和最终发出的解析结果绑定在一起，便于写历史记录。
+ */
 type ExecutionContext = {
   request: HttpRequestRecord
   environment?: HttpEnvironment
@@ -186,6 +190,7 @@ function replaceVariables(
   variables: Map<string, string>,
   unresolvedVariables: Set<string>
 ): string {
+  // 未解析变量不会静默清空，而是保留原样并记录下来，方便 UI 提示缺失项。
   return value.replace(VARIABLE_PATTERN, (matched, variableName: string) => {
     if (variables.has(variableName)) {
       return variables.get(variableName) ?? ''
@@ -302,6 +307,7 @@ function trimHistoryBody(body: string): {
   responseBody: string
   responseBodyTruncated: boolean
 } {
+  // 历史记录只保留有限长度，避免单次大响应把本地 JSON 无限撑大。
   if (body.length <= MAX_HISTORY_RESPONSE_BODY_CHARS) {
     return {
       responseBody: body,
@@ -362,6 +368,7 @@ function normalizeHistory(
 
   return normalized
     .filter((item) => {
+      // 同一请求的历史条数单独限流，避免高频调试请求挤占全部容量。
       const count = perRequestCounts.get(item.requestId) ?? 0
       if (count >= MAX_HISTORY_PER_REQUEST) return false
       perRequestCounts.set(item.requestId, count + 1)
@@ -440,6 +447,10 @@ function normalizeState(
   }
 }
 
+/**
+ * HTTP 集合模块的主进程服务。
+ * 变量替换、认证头注入、超时控制和历史落盘都在这里完成，而不是在 renderer。
+ */
 export class HttpCollectionService {
   private readonly paths
   private readonly repository
@@ -699,6 +710,7 @@ export class HttpCollectionService {
     const executedAt = nowIso()
     const startedAt = performance.now()
     const abortController = new AbortController()
+    // 用主进程本地超时控制兜底，避免单个请求无限挂起。
     const timeoutHandle = setTimeout(() => abortController.abort(), timeoutMs)
 
     try {
@@ -785,6 +797,7 @@ export class HttpCollectionService {
     const startedAt = performance.now()
     const results: HttpExecuteRequestResult[] = []
 
+    // 当前批量执行刻意串行，避免同时打出大量请求压垮目标服务或本机网络。
     for (const request of requests) {
       results.push(
         await this.executeRequest({
@@ -879,6 +892,7 @@ export class HttpCollectionService {
     const raw = await this.repository.read()
     const normalized = normalizeState(raw)
 
+    // 发现历史文件结构不规范时立即自愈，避免脏数据持续向 UI 扩散。
     if (JSON.stringify(raw) !== JSON.stringify(normalized)) {
       await this.repository.write(normalized)
     }
@@ -931,6 +945,7 @@ export class HttpCollectionService {
       throw new Error('未找到所选环境变量集')
     }
 
+    // 先解析出最终请求快照，再真正发请求，便于 UI 预览和历史复盘。
     return {
       request,
       environment,
@@ -967,6 +982,7 @@ export class HttpCollectionService {
     await this.updateState((state) => ({
       ...state,
       updatedAt: historyRecord.executedAt,
+      // 写回历史时再次走 normalizeHistory，统一执行裁剪和容量限制。
       history: normalizeHistory(
         [historyRecord, ...state.history],
         new Set(state.requests.map((request) => request.id)),

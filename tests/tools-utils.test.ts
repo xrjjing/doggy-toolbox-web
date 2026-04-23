@@ -5,8 +5,14 @@ import {
   base64EncodeTextUtf8,
   batchDecode,
   batchEncode,
+  createQrSvgDataUrl,
+  createWebSocketMessage,
   convertRadix,
   convertToAllRadix,
+  convertColor,
+  csvToJson,
+  decodeJwt,
+  describeCron,
   deduplicate,
   detectFormat,
   detectRadix,
@@ -16,17 +22,38 @@ import {
   escapeJson,
   formatJson,
   formatUnixMillis,
+  formatSql,
+  formatWebSocketTimestamp,
+  getCharCountStats,
+  getImageExtensionFromMimeType,
+  getImageMimeTypeFromFilename,
   getNowValues,
+  getQrByteLength,
+  getQrCapacityInfo,
+  getOriginalImageSizeFromBase64,
+  generateQrCode,
+  inferImageMimeTypeFromBase64,
   hashHexUtf8,
   htmlEntityDecode,
   htmlEntityEncode,
+  inferJsonSchema,
+  isSupportedImageMimeType,
+  isValidWebSocketUrl,
+  inspectIpv4,
+  inspectUserAgent,
   minifyJson,
+  minifySql,
+  parseToml,
   parseTimeInput,
+  queryJsonPath,
   removeEmptyLines,
+  runRegex,
   sha256HexUtf8,
   sortJsonFields,
   sortLines,
+  summarizeWebSocketMessages,
   toNamingFormats,
+  tryFormatWebSocketJson,
   unicodeEscape,
   unicodeUnescape,
   unescapeJson,
@@ -36,6 +63,12 @@ import {
   urlEncodeBatch,
   validateJson
 } from '@renderer/features/tools/utils'
+import {
+  decryptWithRsa,
+  encryptWithRsa,
+  generateRsaKeyPair
+} from '@renderer/features/tools/utils/core-rsa'
+import { ensureImageDataUri } from '@renderer/features/tools/utils/core-image-base64'
 
 describe('base64 and naming utilities', () => {
   it('encodes and decodes UTF-8 text', () => {
@@ -205,5 +238,136 @@ describe('radix utilities', () => {
       hex: 'FF',
       detectedRadix: 10
     })
+  })
+})
+
+describe('legacy migrated tool utilities', () => {
+  it('decodes JWT parts and reports payload', () => {
+    const decoded = decodeJwt(
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkb2dneSIsImV4cCI6NDExNzYwOTYwMH0.signature'
+    )
+    expect(decoded.header).toEqual({ alg: 'HS256', typ: 'JWT' })
+    expect(decoded.payload).toEqual({ sub: 'doggy', exp: 4117609600 })
+    expect(decoded.signature).toBe('signature')
+  })
+
+  it('counts text details like old char count page', () => {
+    expect(getCharCountStats('hello 狗狗\n123')).toMatchObject({
+      chars: 12,
+      bytesUtf8: 16,
+      lines: 2,
+      chinese: 2,
+      words: 1,
+      digits: 3
+    })
+  })
+
+  it('runs regex and captures groups', () => {
+    const result = runRegex('(dog)-(\\d+)', 'g', 'dog-1 cat dog-22')
+    expect(result.matches).toEqual([
+      { index: 0, match: 'dog-1', groups: ['dog', '1'] },
+      { index: 10, match: 'dog-22', groups: ['dog', '22'] }
+    ])
+  })
+
+  it('formats and minifies SQL while extracting table names', async () => {
+    const { extractSqlTables } = await import('@renderer/features/tools/utils')
+    const sql = 'select id,name from users where status = 1 order by created_at desc'
+    expect(formatSql(sql)).toContain('SELECT')
+    expect(minifySql('select *\nfrom users')).toBe('select * from users')
+    expect(extractSqlTables(sql)).toEqual(['users'])
+  })
+
+  it('converts CSV and color formats', () => {
+    expect(csvToJson('name,age\nAlice,18')).toEqual([{ name: 'Alice', age: '18' }])
+    expect(convertColor('rgb(217, 119, 6)').hex).toBe('#D97706')
+  })
+
+  it('describes cron and infers JSON schema', () => {
+    expect(describeCron('*/5 9-18 * * 1-5')).toContain('分钟: 每 5 单位')
+    expect(inferJsonSchema('{"name":"Alice","age":18}')).toMatchObject({
+      type: 'object',
+      required: ['name', 'age']
+    })
+  })
+
+  it('queries JSONPath and parses TOML', () => {
+    expect(queryJsonPath('{"user":{"tags":["a","b"]}}', '$.user.tags[0]')).toEqual(['a'])
+    expect(parseToml('title = "Doggy"\n[owner]\nname = "xrj"')).toEqual({
+      title: 'Doggy',
+      owner: { name: 'xrj' }
+    })
+  })
+
+  it('inspects user agent and IPv4', () => {
+    expect(
+      inspectUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/123 Safari/537.36'
+      )
+    ).toMatchObject({ os: 'macOS', mobile: 'no' })
+    expect(inspectIpv4('192.168.1.10/24')).toMatchObject({ private: 'yes', cidr: '24' })
+  })
+})
+
+describe('advanced migrated panel utilities', () => {
+  it('generates QR code svg and data url', () => {
+    const result = generateQrCode('https://example.com', {
+      size: 256,
+      errorCorrectionLevel: 'M',
+      darkColor: '#112233',
+      lightColor: '#ffffff'
+    })
+
+    expect(result.svg).toContain('<svg')
+    expect(result.svg).toContain('#112233')
+    expect(result.byteLength).toBe(getQrByteLength('https://example.com'))
+    expect(createQrSvgDataUrl(result.svg)).toContain('data:image/svg+xml')
+    expect(getQrCapacityInfo('H').byte).toBe(1273)
+  })
+
+  it('normalizes image data uri and mime helpers', () => {
+    expect(isSupportedImageMimeType('image/png')).toBe(true)
+    expect(getImageMimeTypeFromFilename('doggy.png')).toBe('image/png')
+    expect(getImageExtensionFromMimeType('image/jpeg')).toBe('jpg')
+    expect(inferImageMimeTypeFromBase64('iVBORw0KGgoAAAANSUhEUgAAAAUA')).toBe('image/png')
+
+    const resolved = ensureImageDataUri('iVBORw0KGgoAAAANSUhEUgAAAAUA')
+    expect(resolved.mimeType).toBe('image/png')
+    expect(resolved.dataUri.startsWith('data:image/png;base64,')).toBe(true)
+    expect(getOriginalImageSizeFromBase64(resolved.base64)).toBeGreaterThan(0)
+  })
+
+  it('generates and uses RSA key pair with base64 and hex formats', async () => {
+    const keyPair = await generateRsaKeyPair(2048)
+    expect(keyPair.publicKey).toContain('BEGIN PUBLIC KEY')
+    expect(keyPair.privateKey).toContain('BEGIN PRIVATE KEY')
+
+    const encryptedBase64 = await encryptWithRsa('doggy toolbox', keyPair.publicKey, 'base64')
+    expect(encryptedBase64.length).toBeGreaterThan(10)
+    await expect(decryptWithRsa(encryptedBase64, keyPair.privateKey, 'base64')).resolves.toBe(
+      'doggy toolbox'
+    )
+
+    const encryptedHex = await encryptWithRsa('hello', keyPair.publicKey, 'hex')
+    expect(encryptedHex).toMatch(/^[0-9a-f]+$/)
+    await expect(decryptWithRsa(encryptedHex, keyPair.privateKey, 'hex')).resolves.toBe('hello')
+  })
+
+  it('formats websocket messages and validates ws urls', () => {
+    expect(formatWebSocketTimestamp(new Date('2026-04-23T01:02:03.456Z'))).toMatch(
+      /^\d{2}:\d{2}:\d{2}\.\d{3}$/
+    )
+    expect(isValidWebSocketUrl('ws://127.0.0.1:8080/ws')).toBe(true)
+    expect(isValidWebSocketUrl('https://example.com')).toBe(false)
+    expect(tryFormatWebSocketJson('{"ok":true}')).toContain('\n')
+
+    const sent = createWebSocketMessage('sent', '{"ok":true}', new Date('2026-04-23T01:02:03.456Z'))
+    const received = createWebSocketMessage(
+      'received',
+      'pong',
+      new Date('2026-04-23T01:02:04.000Z')
+    )
+    expect(summarizeWebSocketMessages([sent, received])).toContain('sent')
+    expect(summarizeWebSocketMessages([sent, received])).toContain('received')
   })
 })

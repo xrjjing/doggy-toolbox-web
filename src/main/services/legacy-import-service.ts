@@ -45,6 +45,10 @@ export type LegacyImportServiceDependencies = {
   promptService: PromptService
 }
 
+/**
+ * 先把“JSON 非法”和“结构不支持”两类问题区分开，
+ * 这样 UI 才能给出更准确的导入失败原因。
+ */
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -60,7 +64,8 @@ function createEmptySummary(): BackupSummary {
     httpCollections: 0,
     httpRequests: 0,
     httpEnvironments: 0,
-    httpHistoryRecords: 0
+    httpHistoryRecords: 0,
+    aiSettings: 0
   }
 }
 
@@ -82,6 +87,10 @@ function uniqueRequestedSections(
   return availableSections.filter((section) => requested.includes(section))
 }
 
+/**
+ * 导入流程先只做 JSON 解析，不在这一步推断业务结构，
+ * 便于把“语法错误”和“格式不支持”拆成两类错误提示。
+ */
 function parseImportJson(json: string): unknown {
   try {
     return JSON.parse(json)
@@ -90,6 +99,13 @@ function parseImportJson(json: string): unknown {
   }
 }
 
+/**
+ * 当前仅兼容两类旧数据：
+ * 1. 旧项目总备份。
+ * 2. 旧 Prompt 模板导出。
+ *
+ * 主题等 UI 配置不在这里导入，因为新仓没有沿用旧仓的同构持久化结构。
+ */
 function detectSourceKind(payload: unknown): LegacyImportSourceKind {
   if (!payload || typeof payload !== 'object') {
     throw new Error('导入内容不是有效 JSON 对象')
@@ -141,6 +157,10 @@ function extractLegacyNodeConfigText(node: Record<string, unknown>): string {
   return ''
 }
 
+/**
+ * analyze 只做影响评估，不执行真实写入。
+ * 这样 renderer 可以先展示“会覆盖哪些模块、哪些不会导入”。
+ */
 function analyzeLegacyBackup(document: LegacyBackupDocument): LegacyImportAnalysis {
   const tabs = Array.isArray(document.data?.tabs) ? (document.data?.tabs ?? []) : []
   const commands = Array.isArray(document.data?.commands) ? (document.data?.commands ?? []) : []
@@ -168,6 +188,9 @@ function analyzeLegacyBackup(document: LegacyBackupDocument): LegacyImportAnalys
   }
 }
 
+/**
+ * Prompt 导出的导入策略更偏向增量合并，而不是整库覆盖。
+ */
 function analyzeLegacyPromptExport(document: LegacyPromptExportDocument): LegacyImportAnalysis {
   const categories = Array.isArray(document.categories) ? document.categories : []
   const templates = Array.isArray(document.templates) ? document.templates : []
@@ -188,6 +211,10 @@ function analyzeLegacyPromptExport(document: LegacyPromptExportDocument): Legacy
   }
 }
 
+/**
+ * 旧数据导入编排层。
+ * 它把来源识别、预分析和真实导入拆开，避免导入流程变成不可解释的黑箱。
+ */
 export class LegacyImportService {
   constructor(private readonly dependencies: LegacyImportServiceDependencies) {}
 
@@ -221,6 +248,7 @@ export class LegacyImportService {
     const sections = uniqueRequestedSections(analysis.availableSections, requestedSections)
     const summary = createEmptySummary()
 
+    // 旧总备份导入的语义是按模块整体恢复，会覆盖当前对应模块状态。
     if (sections.includes('commands')) {
       const mapped = this.mapLegacyCommands(document)
       const state = await this.dependencies.commandService.restoreBackupSection(mapped)
@@ -270,6 +298,7 @@ export class LegacyImportService {
 
         const existing = categories.find((item) => item.name === name)
         if (existing) {
+          // 分类按名称合并，避免重复导入时不断创建同名分类。
           categoryIdMap.set(sanitizeText(category.id), existing.id)
           continue
         }
@@ -291,6 +320,7 @@ export class LegacyImportService {
         const content = sanitizeText(template.content)
         if (!title || !content) continue
         if (templates.some((item) => item.title === title)) {
+          // 模板按标题跳过重复项，尽量保证重复导入时是幂等的。
           continue
         }
 
@@ -354,6 +384,7 @@ export class LegacyImportService {
       const name = sanitizeText(tab.name)
 
       if (!legacyId || legacyId === '0') {
+        // 旧仓默认分组常见是空值或 0，这里统一折叠到新仓 default。
         tabIdMap.set(legacyId || '0', 'default')
         continue
       }
@@ -417,6 +448,7 @@ export class LegacyImportService {
     return {
       nodes: legacyNodes.map((node, index) => ({
         id: randomUUID(),
+        // 旧仓节点字段并不稳定，名称字段做多路兜底以保住可读性。
         name: sanitizeText(node.name) || sanitizeText(node.title) || `导入节点 ${index + 1}`,
         type: sanitizeText(node.type) || 'custom',
         server: sanitizeText(node.server),

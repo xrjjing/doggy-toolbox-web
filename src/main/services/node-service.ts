@@ -84,6 +84,10 @@ function normalizeState(raw: StoredNodeState | null | undefined): StoredNodeStat
   }
 }
 
+/**
+ * 节点模块持久化服务。
+ * 负责把服务器、端口、分享链接和配置文本稳定落盘，并在导入恢复后保持结构一致。
+ */
 export class NodeService {
   private readonly paths
   private readonly repository
@@ -230,6 +234,7 @@ export class NodeService {
     const raw = await this.repository.read()
     const normalized = normalizeState(raw)
 
+    // 节点数据经常来自旧仓导入或手工编辑，读取时统一修正为当前结构。
     if (JSON.stringify(raw) !== JSON.stringify(normalized)) {
       await this.repository.write(normalized)
     }
