@@ -17,7 +17,7 @@ Phase 2：本地持久化模块已完成，P3 / P4 并行推进
 ├── Electron Vite + Vue + TypeScript 工程骨架
 ├── Naive UI 桌面工具台布局
 ├── IPC 合约与本机运行时检测
-├── Codex / Claude Code SDK bridge 初始入口 + AI 会话历史
+├── Codex / Claude Code SDK bridge 分层入口 + AI 会话历史
 ├── P1 首批纯前端工具工作台
 ├── appData JSON repository
 ├── 命令管理页面与本地持久化
@@ -46,16 +46,36 @@ Phase 2：本地持久化模块已完成，P3 / P4 并行推进
 新项目不沿用这条路径。新项目默认走：
 
 ```text
-Vue Renderer -> preload 安全桥 -> Electron Main -> AI Bridge -> 本机 SDK / 本机配置
+Vue Renderer
+  -> preload 安全桥
+  -> Electron Main
+  -> AiBridgeService（只做窗口事件桥）
+  -> AiSessionService（会话生命周期与历史落盘）
+  -> AiProviderRouter（按 provider 选择本地运行时）
+  -> CodexSdkBridge / ClaudeAgentBridge
+  -> 本机 SDK / 本机配置
 ```
 
 首批目标：
 
 - Codex：通过 `@openai/codex-sdk` 读取本机 `~/.codex` 配置和登录态。
 - Claude：通过 `@anthropic-ai/claude-agent-sdk` 读取本机 Claude Code 配置。
+- 本机运行时检测会读取 `~/.codex/config.toml`、`~/.codex/auth.json`、`~/.claude.json`，并在总览页展示模型、base_url、service_tier、权限和沙箱等可见事实。
 - Renderer 不保存 API Key，也不直接发 AI HTTPS 请求。
-- UI 只消费统一的 `start / delta / thinking / tool / usage / done / error` 事件协议。
-- AI 会话历史会保存到本地资料库，验证台可回看最近会话输出和状态。
+- UI 只消费统一的 `start / status / delta / thinking / tool / usage / session-ref / done / error` 事件协议。
+- AI 会话历史会保存到本地资料库，验证台可回看最近会话输出、思考片段、工具事件、usage、provider session id 和运行时配置快照。
+
+真实本机 SDK smoke test：
+
+```bash
+npm run smoke:ai
+npm run smoke:ai -- codex
+npm run smoke:ai -- claude
+```
+
+这条检查会实际调用本机 `@openai/codex-sdk` 与 `@anthropic-ai/claude-agent-sdk`，并要求返回 `DOGGY_AI_SMOKE_OK`。它不是 mock 测试，会消耗本机已登录账号对应的模型额度。
+
+Codex SDK 会写入 `~/.codex/sessions`，Claude Agent SDK 会读取本机 Claude Code 配置；如果在受限沙箱内执行，可能需要放开本机配置目录访问权限。
 
 ## 本地持久化原则
 
@@ -113,7 +133,7 @@ GitHub 打包：
 
 ```text
 doggy-toolbox-web/
-├── src/main/             # Electron Main Process，本地能力与 AI bridge
+├── src/main/             # Electron Main Process，本地能力与 AI bridge 分层
 ├── src/preload/          # 安全暴露给 Renderer 的 IPC API
 ├── src/renderer/         # Vue 3 + TypeScript + Naive UI 前端
 ├── src/shared/           # Main / Preload / Renderer 共享类型

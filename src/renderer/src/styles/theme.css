@@ -318,6 +318,74 @@ textarea {
   background: rgba(240, 253, 250, 0.8);
 }
 
+.stream-output.is-thinking {
+  min-height: 120px;
+  color: #713f12;
+  border-color: rgba(217, 119, 6, 0.18);
+  background: rgba(254, 243, 199, 0.72);
+}
+
+.ai-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ai-runtime-grid .n-statistic {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(54, 42, 31, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.ai-meta-line {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px dashed rgba(15, 118, 110, 0.22);
+  border-radius: 16px;
+  color: var(--muted);
+  background: rgba(240, 253, 250, 0.42);
+}
+
+.ai-meta-line code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #115e59;
+}
+
+.ai-subpanel {
+  display: grid;
+  gap: 12px;
+}
+
+.ai-tool-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-tool-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(54, 42, 31, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.ai-tool-item p {
+  max-height: 120px;
+  margin: 6px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+
 .timeline-card {
   padding: 24px;
 }
@@ -1236,6 +1304,8 @@ textarea {
   .http-history-layout,
   .http-request-meta,
   .http-response-stats,
+  .ai-runtime-grid,
+  .ai-meta-line,
   .commands-shell,
   .nodes-shell,
   .prompts-shell,

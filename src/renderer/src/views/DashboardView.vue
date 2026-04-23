@@ -12,19 +12,22 @@ const runtimeCards = computed(
         title: 'Codex 本机链路',
         status: appStore.runtimeInfo?.codex.available ? '可检测' : '未检测',
         detail: appStore.runtimeInfo?.codex.details ?? '等待检测',
-        type: appStore.runtimeInfo?.codex.available ? 'success' : 'warning'
+        type: appStore.runtimeInfo?.codex.available ? 'success' : 'warning',
+        facts: appStore.runtimeInfo?.codex.facts ?? []
       },
       {
         title: 'Claude Code 本机链路',
         status: appStore.runtimeInfo?.claude.available ? '可检测' : '未检测',
         detail: appStore.runtimeInfo?.claude.details ?? '等待检测',
-        type: appStore.runtimeInfo?.claude.available ? 'success' : 'warning'
+        type: appStore.runtimeInfo?.claude.available ? 'success' : 'warning',
+        facts: appStore.runtimeInfo?.claude.facts ?? []
       },
       {
         title: '数据目录',
         status: 'Electron appData',
         detail: appStore.runtimeInfo?.dataDir ?? '等待检测',
-        type: 'info'
+        type: 'info',
+        facts: []
       }
     ] as const
 )
@@ -69,6 +72,11 @@ const migrationGroups = [
         <template #header>{{ card.title }}</template>
         <NTag :type="card.type" :bordered="false">{{ card.status }}</NTag>
         <p class="muted">{{ card.detail }}</p>
+        <div v-if="card.facts.length > 0" class="chip-list">
+          <span v-for="fact in card.facts" :key="`${card.title}-${fact.label}`" class="chip">
+            {{ fact.label }}={{ fact.value }}
+          </span>
+        </div>
       </NCard>
     </NGridItem>
   </NGrid>

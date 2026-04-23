@@ -7,14 +7,38 @@ export type RuntimeInfo = {
   claude: LocalRuntimeStatus
 }
 
+export type LocalRuntimeFileState = {
+  label: string
+  path: string
+  exists: boolean
+}
+
+export type LocalRuntimeFact = {
+  label: string
+  value: string
+}
+
 export type LocalRuntimeStatus = {
   available: boolean
   checkedAt: string
   details: string
   configPath?: string
+  authPath?: string
+  files: LocalRuntimeFileState[]
+  facts: LocalRuntimeFact[]
 }
 
 export type AiProviderKind = 'codex' | 'claude-code'
+
+export type AiTransportKind = 'codex-sdk' | 'claude-agent-sdk'
+
+export type AiSessionPhase =
+  | 'idle'
+  | 'starting'
+  | 'streaming'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 
 export type AiChatMessage = {
   role: 'system' | 'user' | 'assistant'
@@ -28,11 +52,44 @@ export type AiStartChatInput = {
   title?: string
 }
 
+export type AiSessionRuntime = {
+  transport: AiTransportKind
+  workingDirectory: string
+  model?: string
+  baseUrl?: string
+  configPath?: string
+  authPath?: string
+  serviceTier?: string
+  approvalPolicy?: string
+  sandboxMode?: string
+  providerSessionId?: string
+}
+
+export type AiUsageSummary = {
+  inputTokens?: number
+  outputTokens?: number
+  totalCostUsd?: number
+}
+
+export type AiToolCallSummary = {
+  id: string
+  name: string
+  status: 'start' | 'done' | 'error'
+  text?: string
+}
+
 export type AiStreamEvent =
   | {
       type: 'start'
       sessionId: string
       provider: AiProviderKind
+      runtime: AiSessionRuntime
+    }
+  | {
+      type: 'status'
+      sessionId: string
+      phase: Exclude<AiSessionPhase, 'idle'>
+      message: string
     }
   | {
       type: 'delta'
@@ -47,6 +104,7 @@ export type AiStreamEvent =
   | {
       type: 'tool'
       sessionId: string
+      toolId: string
       name: string
       status: 'start' | 'done' | 'error'
       text?: string
@@ -56,6 +114,12 @@ export type AiStreamEvent =
       sessionId: string
       inputTokens?: number
       outputTokens?: number
+      totalCostUsd?: number
+    }
+  | {
+      type: 'session-ref'
+      sessionId: string
+      providerSessionId: string
     }
   | {
       type: 'done'
@@ -77,6 +141,7 @@ export type AiChatSessionSummary = {
   title: string
   preview: string
   status: 'running' | 'done' | 'error' | 'cancelled'
+  phase: AiSessionPhase
   createdAt: string
   updatedAt: string
 }
@@ -87,10 +152,15 @@ export type AiChatSessionRecord = {
   title: string
   workingDirectory: string
   status: 'running' | 'done' | 'error' | 'cancelled'
+  phase: AiSessionPhase
   createdAt: string
   updatedAt: string
   messages: AiChatMessage[]
   output: string
+  thinking: string
+  tools: AiToolCallSummary[]
+  runtime?: AiSessionRuntime
+  usage?: AiUsageSummary
   errorMessage?: string
 }
 

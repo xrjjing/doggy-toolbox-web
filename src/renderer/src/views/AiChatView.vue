@@ -8,6 +8,7 @@ import {
   NRadioButton,
   NRadioGroup,
   NSpace,
+  NStatistic,
   NTag,
   useMessage
 } from 'naive-ui'
@@ -19,6 +20,18 @@ const aiStore = useAiStore()
 const providerLabel = computed(() =>
   aiStore.provider === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
 )
+
+const phaseLabel = computed(() => {
+  const labels = {
+    idle: '空闲',
+    starting: '启动中',
+    streaming: '流式输出',
+    completed: '已完成',
+    failed: '失败',
+    cancelled: '已取消'
+  } as const
+  return labels[aiStore.phase]
+})
 
 function formatUpdatedAt(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -90,7 +103,7 @@ onBeforeUnmount(() => {
             <p>{{ session.preview || '暂无摘要' }}</p>
           </div>
           <span class="http-status-pill" :class="{ 'is-error': session.status === 'error' }">
-            {{ session.status }}
+            {{ session.phase }}
           </span>
         </button>
       </div>
@@ -125,14 +138,58 @@ onBeforeUnmount(() => {
             <strong>{{ aiStore.activeSession.provider }}</strong>
           </div>
           <div>
-            <span>状态</span>
-            <strong>{{ aiStore.activeSession.status }}</strong>
+            <span>阶段</span>
+            <strong>{{ phaseLabel }}</strong>
           </div>
           <div>
             <span>最近更新</span>
             <strong>{{ formatUpdatedAt(aiStore.activeSession.updatedAt) }}</strong>
           </div>
         </div>
+
+        <div v-if="aiStore.runtime" class="ai-runtime-grid">
+          <NStatistic label="运行时" :value="aiStore.runtime.transport" />
+          <NStatistic label="模型" :value="aiStore.runtime.model || '跟随本机配置'" />
+          <NStatistic label="权限" :value="aiStore.runtime.approvalPolicy || 'SDK 默认'" />
+          <NStatistic label="沙箱" :value="aiStore.runtime.sandboxMode || 'SDK 默认'" />
+        </div>
+
+        <div v-if="aiStore.runtime?.providerSessionId" class="ai-meta-line">
+          <span>Provider Session</span>
+          <code>{{ aiStore.runtime.providerSessionId }}</code>
+        </div>
+
+        <div v-if="aiStore.usage" class="ai-runtime-grid">
+          <NStatistic label="输入 Tokens" :value="aiStore.usage.inputTokens ?? 0" />
+          <NStatistic label="输出 Tokens" :value="aiStore.usage.outputTokens ?? 0" />
+          <NStatistic label="成本 USD" :value="aiStore.usage.totalCostUsd ?? 0" />
+        </div>
+
+        <section v-if="aiStore.thinking" class="ai-subpanel">
+          <div class="card-title-row">
+            <span>思考 / Reasoning</span>
+            <NTag size="small" :bordered="false">thinking</NTag>
+          </div>
+          <pre class="stream-output is-thinking">{{ aiStore.thinking }}</pre>
+        </section>
+
+        <section v-if="aiStore.tools.length > 0" class="ai-subpanel">
+          <div class="card-title-row">
+            <span>工具 / 运行事件</span>
+            <NTag size="small" :bordered="false">{{ aiStore.tools.length }}</NTag>
+          </div>
+          <div class="ai-tool-list">
+            <article v-for="tool in aiStore.tools" :key="tool.id" class="ai-tool-item">
+              <div>
+                <strong>{{ tool.name }}</strong>
+                <p>{{ tool.text || '无详细输出' }}</p>
+              </div>
+              <NTag size="small" :type="tool.status === 'error' ? 'error' : 'info'">
+                {{ tool.status }}
+              </NTag>
+            </article>
+          </div>
+        </section>
 
         <pre class="stream-output">{{ aiStore.output || '等待输出...' }}</pre>
       </NSpace>

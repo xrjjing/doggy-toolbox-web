@@ -4,14 +4,19 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { AiBridgeService } from './services/ai-bridge'
 import { AiChatHistoryService } from './services/ai-chat-history-service'
+import { AiProviderRouter } from './services/ai-provider-router'
+import { AiSessionService } from './services/ai-session-service'
 import { BackupService } from './services/backup-service'
+import { ClaudeAgentBridge } from './services/claude-agent-bridge'
 import { CommandService } from './services/command-service'
+import { CodexSdkBridge } from './services/codex-sdk-bridge'
 import {
   CredentialService,
   plainCredentialSecretCodec,
   type CredentialSecretCodec
 } from './services/credential-service'
 import { HttpCollectionService } from './services/http-collection-service'
+import { LocalAiRuntimeService } from './services/local-ai-runtime-service'
 import { NodeService } from './services/node-service'
 import { PromptService } from './services/prompt-service'
 import { LegacyImportService } from './services/legacy-import-service'
@@ -39,6 +44,8 @@ import type {
 let mainWindow: BrowserWindow | null = null
 let aiBridge: AiBridgeService
 let aiChatHistoryService: AiChatHistoryService
+let aiSessionService: AiSessionService
+let aiRuntimeService: LocalAiRuntimeService
 let commandService: CommandService
 let credentialService: CredentialService
 let httpCollectionService: HttpCollectionService
@@ -97,7 +104,20 @@ function createWindow(): void {
 
 function registerIpc(): void {
   aiChatHistoryService = new AiChatHistoryService(app.getPath('userData'))
-  aiBridge = new AiBridgeService(() => mainWindow, aiChatHistoryService)
+  aiRuntimeService = new LocalAiRuntimeService()
+  const providerRouter = new AiProviderRouter(
+    {
+      codex: new CodexSdkBridge(aiRuntimeService),
+      'claude-code': new ClaudeAgentBridge(aiRuntimeService)
+    },
+    aiRuntimeService
+  )
+  let bridgeEmitter: AiBridgeService | null = null
+  aiSessionService = new AiSessionService(aiChatHistoryService, providerRouter, (event) =>
+    bridgeEmitter?.emit(event)
+  )
+  aiBridge = new AiBridgeService(() => mainWindow, aiSessionService)
+  bridgeEmitter = aiBridge
   commandService = new CommandService(app.getPath('userData'))
   credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
   httpCollectionService = new HttpCollectionService(app.getPath('userData'))
