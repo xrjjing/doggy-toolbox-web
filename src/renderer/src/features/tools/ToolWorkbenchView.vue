@@ -1,8 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { NButton, NCard, NInput, NSelect, NSpace, NTag, useMessage } from 'naive-ui'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import {
+  NButton,
+  NCard,
+  NInput,
+  NRadioButton,
+  NRadioGroup,
+  NSelect,
+  NSpace,
+  NStatistic,
+  NTag,
+  useMessage
+} from 'naive-ui'
+import { useAiStore } from '@renderer/stores/ai'
 import { toolCatalog } from './catalog'
+import { buildToolAiAssistPrompt } from './tool-ai-assist'
 import type { ToolKind } from './types'
+import type { AiProviderKind, AiSessionPhase } from '@shared/ipc-contract'
 import {
   base64DecodeToTextUtf8,
   base64EncodeTextUtf8,
@@ -17,14 +31,31 @@ import { convertToAllRadix, urlDecode, urlEncode } from './utils/core-url-radix'
 import { detectFormat, smartDecode, unicodeEscape } from './utils/core-unicode'
 
 const message = useMessage()
+const aiStore = useAiStore()
 const activeTool = ref<ToolKind>('base64')
 const input = ref('')
 const output = ref('')
 const extra = ref('')
 const hashAlgorithm = ref<'md5' | 'sha256'>('md5')
+const aiProvider = ref<AiProviderKind>('codex')
 
 const activeDefinition = computed(() => toolCatalog.find((tool) => tool.key === activeTool.value)!)
 const toolOptions = toolCatalog.map((tool) => ({ label: tool.title, value: tool.key }))
+const aiProviderLabel = computed(() =>
+  aiProvider.value === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
+)
+
+const aiPhaseLabel = computed(() => {
+  const labels: Record<AiSessionPhase, string> = {
+    idle: '空闲',
+    starting: '启动中',
+    streaming: '流式输出',
+    completed: '已完成',
+    failed: '失败',
+    cancelled: '已取消'
+  }
+  return labels[aiStore.phase]
+})
 
 async function runTool(): Promise<void> {
   try {
@@ -131,6 +162,39 @@ function clearTool(): void {
   output.value = ''
   extra.value = ''
 }
+
+async function startAiAssist(): Promise<void> {
+  if (!input.value.trim() && !output.value.trim() && !extra.value.trim()) {
+    message.warning('请先输入内容或运行一次工具，再让 AI 分析')
+    return
+  }
+
+  const prompt = buildToolAiAssistPrompt({
+    toolTitle: activeDefinition.value.title,
+    toolDescription: activeDefinition.value.description,
+    input: input.value,
+    output: output.value,
+    extra: extra.value
+  })
+
+  try {
+    await aiStore.startChat({
+      provider: aiProvider.value,
+      title: `${activeDefinition.value.title} 工具 AI 分析`,
+      prompt
+    })
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function cancelAiAssist(): Promise<void> {
+  await aiStore.cancelChat()
+}
+
+onBeforeUnmount(() => {
+  aiStore.disposeStream()
+})
 </script>
 
 <template>
@@ -209,6 +273,47 @@ function clearTool(): void {
             <pre class="stream-output">{{ extra || '这里显示校验、预览或反向结果...' }}</pre>
           </section>
         </div>
+
+        <section class="tool-ai-assist">
+          <div class="card-title-row">
+            <div>
+              <p class="eyebrow">local ai assist</p>
+              <h3>AI 结果复核</h3>
+            </div>
+            <NTag size="small" :bordered="false">本机 SDK</NTag>
+          </div>
+
+          <p class="muted">
+            把当前工具名、输入、result 和 extra 组织成 prompt，交给本机 Codex / Claude Code SDK
+            做结果解释、异常判断和下一步建议。
+          </p>
+
+          <div class="tool-ai-toolbar">
+            <NRadioGroup v-model:value="aiProvider">
+              <NRadioButton value="codex">Codex SDK</NRadioButton>
+              <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
+            </NRadioGroup>
+            <div class="action-row">
+              <NButton type="primary" :loading="aiStore.running" @click="startAiAssist">
+                让 {{ aiProviderLabel }} 分析
+              </NButton>
+              <NButton secondary :disabled="!aiStore.running" @click="cancelAiAssist">
+                取消
+              </NButton>
+            </div>
+          </div>
+
+          <div v-if="aiStore.activeSession" class="ai-runtime-grid">
+            <NStatistic label="提供方" :value="aiStore.activeSession.provider" />
+            <NStatistic label="阶段" :value="aiPhaseLabel" />
+            <NStatistic label="模型" :value="aiStore.runtime?.model || '跟随本机配置'" />
+            <NStatistic label="输出 Tokens" :value="aiStore.usage?.outputTokens ?? 0" />
+          </div>
+
+          <pre class="stream-output tool-ai-output">{{
+            aiStore.output || '等待 AI 分析。会话会同步保存到 AI SDK Bridge 验证台。'
+          }}</pre>
+        </section>
       </NSpace>
     </NCard>
   </div>

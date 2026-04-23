@@ -64,6 +64,7 @@ Vue Renderer
 - Renderer 不保存 API Key，也不直接发 AI HTTPS 请求。
 - UI 只消费统一的 `start / status / delta / thinking / tool / usage / session-ref / done / error` 事件协议。
 - AI 会话历史会保存到本地资料库，验证台可回看最近会话输出、思考片段、工具事件、usage、provider session id 和运行时配置快照。
+- 工具页已接入 AI 结果复核：会把当前工具名、输入、result 和 extra 组织成 prompt，复用同一套本机 SDK bridge 进行解释和异常判断。
 
 真实本机 SDK smoke test：
 

@@ -782,6 +782,35 @@ textarea {
   gap: 16px;
 }
 
+.tool-ai-assist {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 96% 0, rgba(20, 184, 166, 0.14), transparent 34%),
+    rgba(240, 253, 250, 0.52);
+}
+
+.tool-ai-assist h3 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.tool-ai-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tool-ai-output {
+  min-height: 160px;
+}
+
 .http-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

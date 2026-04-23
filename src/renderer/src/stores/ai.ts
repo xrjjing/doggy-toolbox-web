@@ -8,6 +8,13 @@ import type {
   AiStreamEvent
 } from '@shared/ipc-contract'
 
+type StartChatOptions = {
+  provider?: AiProviderKind
+  prompt?: string
+  title?: string
+  workingDirectory?: string
+}
+
 export const useAiStore = defineStore('ai', () => {
   const historyState = ref<AiChatHistoryState | null>(null)
   const activeSession = ref<AiChatSessionRecord | null>(null)
@@ -131,22 +138,33 @@ export const useAiStore = defineStore('ai', () => {
     )
   }
 
-  async function startChat(): Promise<string> {
-    if (!prompt.value.trim()) {
+  async function startChat(options: StartChatOptions = {}): Promise<string> {
+    const promptToSend = (options.prompt ?? prompt.value).trim()
+    const providerToUse = options.provider ?? provider.value
+
+    if (!promptToSend) {
       throw new Error('请输入要发送给 AI 的内容')
     }
 
-    running.value = true
-    unsubscribe?.()
-    unsubscribe = window.doggy.onAiStreamEvent(handleStreamEvent)
-    const result = await window.doggy.aiStartChat({
-      provider: provider.value,
-      title: prompt.value.trim().slice(0, 48),
-      messages: [{ role: 'user', content: prompt.value }]
-    })
-    await loadSession(result.sessionId)
-    await loadHistory()
-    return result.sessionId
+    try {
+      prompt.value = promptToSend
+      provider.value = providerToUse
+      running.value = true
+      unsubscribe?.()
+      unsubscribe = window.doggy.onAiStreamEvent(handleStreamEvent)
+      const result = await window.doggy.aiStartChat({
+        provider: providerToUse,
+        title: options.title ?? promptToSend.slice(0, 48),
+        workingDirectory: options.workingDirectory,
+        messages: [{ role: 'user', content: promptToSend }]
+      })
+      await loadSession(result.sessionId)
+      await loadHistory()
+      return result.sessionId
+    } catch (error) {
+      running.value = false
+      throw error
+    }
   }
 
   async function cancelChat(): Promise<void> {
