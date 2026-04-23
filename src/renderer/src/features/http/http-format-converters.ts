@@ -10,6 +10,19 @@ import type {
 
 const HTTP_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 const POSTMAN_SCHEMA_URL = 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
+const OPENAPI_VERSION = '3.0.3'
+const SENSITIVE_HEADERS = new Set([
+  'authorization',
+  'x-api-key',
+  'api-key',
+  'token',
+  'x-token',
+  'bearer',
+  'cookie',
+  'set-cookie',
+  'proxy-authorization',
+  'x-auth-token'
+])
 
 type PostmanCollection = {
   info?: {
@@ -42,6 +55,111 @@ type PostmanRequest = {
   description?: string
 }
 
+type OpenApiDocument = {
+  openapi?: string
+  swagger?: string
+  info?: {
+    title?: string
+    description?: string
+    version?: string
+  }
+  servers?: Array<{ url?: string }>
+  paths?: Record<string, OpenApiPathItem>
+  components?: {
+    securitySchemes?: Record<string, unknown>
+  }
+}
+
+type OpenApiPathItem = {
+  parameters?: OpenApiParameter[]
+} & Partial<Record<Lowercase<HttpMethod>, OpenApiOperation>>
+
+type OpenApiOperation = {
+  summary?: string
+  description?: string
+  operationId?: string
+  tags?: string[]
+  parameters?: OpenApiParameter[]
+  requestBody?: {
+    content?: Record<string, OpenApiMediaType>
+  }
+  responses?: Record<string, { description: string }>
+  security?: Array<Record<string, string[]>>
+}
+
+type OpenApiParameter = {
+  name?: string
+  in?: 'query' | 'path' | 'header' | 'cookie'
+  required?: boolean
+  description?: string
+  example?: unknown
+  schema?: {
+    type?: string
+    example?: unknown
+    default?: unknown
+  }
+}
+
+type OpenApiMediaType = {
+  schema?: JsonSchemaLike
+  example?: unknown
+  examples?: Record<string, { value?: unknown } | unknown>
+}
+
+type JsonSchemaLike = {
+  type?: string
+  example?: unknown
+  default?: unknown
+  properties?: Record<string, JsonSchemaLike>
+  items?: JsonSchemaLike
+}
+
+type ApifoxDocument = {
+  info?: {
+    name?: string
+    description?: string
+  }
+  apiCollection?: ApifoxItem[]
+  items?: ApifoxItem[]
+}
+
+type ApifoxItem = {
+  name?: string
+  api?: ApifoxApi
+  request?: ApifoxApi
+  items?: ApifoxItem[]
+  children?: ApifoxItem[]
+}
+
+type ApifoxApi = {
+  method?: string
+  path?: string
+  url?: string
+  description?: string
+  tags?: string[]
+  parameters?: {
+    query?: ApifoxParameter[]
+    path?: ApifoxParameter[]
+    header?: ApifoxParameter[]
+  }
+  requestBody?: {
+    type?: string
+    content?: Record<string, OpenApiMediaType>
+    examples?: Array<{ name?: string; value?: unknown } | unknown>
+    raw?: string
+  }
+}
+
+type ApifoxParameter = {
+  name?: string
+  key?: string
+  value?: unknown
+  example?: unknown
+  description?: string
+  enable?: boolean
+  enabled?: boolean
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
@@ -57,6 +175,215 @@ function createKeyValue(key: string, value: string): Partial<HttpKeyValue> {
     value,
     enabled: true,
     description: ''
+  }
+}
+
+function stringifyExample(value: unknown): string {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value
+  return JSON.stringify(value, null, 2)
+}
+
+function exampleFromMedia(media: OpenApiMediaType | undefined): unknown {
+  if (!media) return undefined
+  if ('example' in media) return media.example
+
+  const firstExample = Object.values(media.examples ?? {})[0]
+  if (firstExample && typeof firstExample === 'object' && 'value' in firstExample) {
+    return firstExample.value
+  }
+  if (firstExample !== undefined) return firstExample
+
+  return exampleFromSchema(media.schema)
+}
+
+function exampleFromSchema(schema: JsonSchemaLike | undefined): unknown {
+  if (!schema) return undefined
+  if (schema.example !== undefined) return schema.example
+  if (schema.default !== undefined) return schema.default
+
+  if (schema.type === 'object' || schema.properties) {
+    return Object.fromEntries(
+      Object.entries(schema.properties ?? {}).map(([key, value]) => [key, exampleFromSchema(value)])
+    )
+  }
+
+  if (schema.type === 'array') return [exampleFromSchema(schema.items)]
+  if (schema.type === 'integer' || schema.type === 'number') return 0
+  if (schema.type === 'boolean') return true
+  if (schema.type === 'string') return ''
+  return undefined
+}
+
+function formExampleFromSchema(schema: JsonSchemaLike | undefined): string {
+  const example = exampleFromSchema(schema)
+  if (!example || typeof example !== 'object' || Array.isArray(example)) return ''
+
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(example)) {
+    params.set(key, value === undefined || value === null ? '' : String(value))
+  }
+  return params.toString()
+}
+
+function bodyFromOpenApiContent(content: Record<string, OpenApiMediaType> | undefined): HttpBody {
+  if (!content) return { type: 'none', content: '' }
+
+  const jsonEntry = Object.entries(content).find(([type]) => type.includes('application/json'))
+  if (jsonEntry) {
+    return {
+      type: 'json',
+      content: stringifyExample(exampleFromMedia(jsonEntry[1]))
+    }
+  }
+
+  const formEntry = Object.entries(content).find(([type]) =>
+    type.includes('application/x-www-form-urlencoded')
+  )
+  if (formEntry) {
+    const example = exampleFromMedia(formEntry[1])
+    const contentText =
+      example && typeof example === 'object' && !Array.isArray(example)
+        ? new URLSearchParams(
+            Object.entries(example).map(([key, value]) => [
+              key,
+              value === undefined || value === null ? '' : String(value)
+            ])
+          ).toString()
+        : formExampleFromSchema(formEntry[1].schema)
+    return {
+      type: 'form',
+      content: contentText
+    }
+  }
+
+  const textEntry = Object.entries(content).find(([type]) => type.startsWith('text/'))
+  if (textEntry) {
+    return {
+      type: 'text',
+      content: stringifyExample(exampleFromMedia(textEntry[1]))
+    }
+  }
+
+  const firstEntry = Object.values(content)[0]
+  return {
+    type: 'text',
+    content: stringifyExample(exampleFromMedia(firstEntry))
+  }
+}
+
+function buildUrlFromOpenApiPath(path: string, servers: OpenApiDocument['servers']): string {
+  if (/^https?:\/\//i.test(path)) return path
+
+  const serverUrl = servers?.find((server) => server.url)?.url
+  if (!serverUrl) return path
+
+  return `${serverUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+}
+
+function valueFromParameter(parameter: OpenApiParameter | ApifoxParameter): string {
+  if ('example' in parameter && parameter.example !== undefined) {
+    return stringifyExample(parameter.example)
+  }
+  if ('value' in parameter && parameter.value !== undefined)
+    return stringifyExample(parameter.value)
+  if ('schema' in parameter && parameter.schema) {
+    return stringifyExample(exampleFromSchema(parameter.schema))
+  }
+  return ''
+}
+
+function openApiParametersToRequestParts(parameters: OpenApiParameter[]): {
+  headers: Array<Partial<HttpKeyValue>>
+  params: Array<Partial<HttpKeyValue>>
+} {
+  const headers: Array<Partial<HttpKeyValue>> = []
+  const params: Array<Partial<HttpKeyValue>> = []
+
+  for (const parameter of parameters) {
+    if (!parameter.name) continue
+
+    const target = parameter.in === 'header' ? headers : parameter.in === 'cookie' ? null : params
+    if (!target) continue
+
+    target.push({
+      key: parameter.name,
+      value: valueFromParameter(parameter),
+      enabled: true,
+      description: [parameter.in, parameter.description].filter(Boolean).join(' / ')
+    })
+  }
+
+  return { headers, params }
+}
+
+function appendUniqueTags(tags: string[], requiredTag: string): string[] {
+  return Array.from(new Set([...tags.filter(Boolean), requiredTag]))
+}
+
+function parseRequestUrlForExport(url: string): {
+  serverUrl?: string
+  path: string
+  queryParams: Array<Partial<HttpKeyValue>>
+} {
+  try {
+    const parsed = new URL(url)
+    return {
+      serverUrl: parsed.origin,
+      path: parsed.pathname || '/',
+      queryParams: Array.from(parsed.searchParams.entries()).map(([key, value]) =>
+        createKeyValue(key, value)
+      )
+    }
+  } catch {
+    const [path = '/', query = ''] = url.split('?')
+    return {
+      path: path || '/',
+      queryParams: Array.from(new URLSearchParams(query).entries()).map(([key, value]) =>
+        createKeyValue(key, value)
+      )
+    }
+  }
+}
+
+function redactedHeaderValue(header: HttpKeyValue): string {
+  return SENSITIVE_HEADERS.has(header.key.toLowerCase().trim()) ? '***REDACTED***' : header.value
+}
+
+function parseJsonOrText(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function requestBodyToOpenApiContent(body: HttpBody): Record<string, OpenApiMediaType> | undefined {
+  if (body.type === 'none' || !body.content) return undefined
+
+  if (body.type === 'json') {
+    return {
+      'application/json': {
+        schema: { type: 'object' },
+        example: parseJsonOrText(body.content)
+      }
+    }
+  }
+
+  if (body.type === 'form') {
+    return {
+      'application/x-www-form-urlencoded': {
+        schema: { type: 'object' },
+        example: Object.fromEntries(new URLSearchParams(body.content).entries())
+      }
+    }
+  }
+
+  return {
+    'text/plain': {
+      schema: { type: 'string' },
+      example: body.content
+    }
   }
 }
 
@@ -202,6 +529,101 @@ function postmanAuthToRequestAuth(auth: PostmanRequest['auth']): Partial<HttpAut
   }
 
   return undefined
+}
+
+function hasPostmanSchema(input: unknown): boolean {
+  const candidate = input as PostmanCollection
+  return Boolean(candidate.info?.schema?.includes('postman') || candidate.item)
+}
+
+function apifoxParametersToKeyValues(
+  parameters: ApifoxParameter[] | undefined
+): Array<Partial<HttpKeyValue>> {
+  return (parameters ?? [])
+    .filter((parameter) => parameter.enable !== false && parameter.enabled !== false)
+    .map((parameter) => ({
+      key: parameter.name ?? parameter.key ?? '',
+      value: valueFromParameter(parameter),
+      enabled: true,
+      description: parameter.description ?? ''
+    }))
+}
+
+function bodyFromApifoxRequestBody(body: ApifoxApi['requestBody']): HttpBody {
+  if (!body) return { type: 'none', content: '' }
+  if (body.content) return bodyFromOpenApiContent(body.content)
+
+  const type = body.type ?? ''
+  const firstExample = body.examples?.[0]
+  const example =
+    firstExample && typeof firstExample === 'object' && 'value' in firstExample
+      ? firstExample.value
+      : firstExample
+
+  if (type.includes('application/json') || type.includes('json')) {
+    return {
+      type: 'json',
+      content: stringifyExample(example ?? body.raw)
+    }
+  }
+
+  if (type.includes('application/x-www-form-urlencoded') || type.includes('form')) {
+    return {
+      type: 'form',
+      content: stringifyExample(example ?? body.raw)
+    }
+  }
+
+  if (example || body.raw) {
+    return {
+      type: 'text',
+      content: stringifyExample(example ?? body.raw)
+    }
+  }
+
+  return { type: 'none', content: '' }
+}
+
+function requestToApifoxItem(request: HttpRequestRecord): ApifoxItem {
+  const parameters = {
+    query: enabledKeyValues(request.params).map((param) => ({
+      name: param.key,
+      value: param.value,
+      description: param.description,
+      enable: true
+    })),
+    header: enabledKeyValues(request.headers).map((header) => ({
+      name: header.key,
+      value: redactedHeaderValue(header),
+      description: header.description,
+      enable: true
+    }))
+  }
+
+  const bodyContent = requestBodyForExport(request)
+
+  return {
+    name: request.name,
+    api: {
+      method: request.method,
+      path: request.url,
+      description: request.description,
+      tags: request.tags,
+      parameters,
+      requestBody:
+        bodyContent && !['GET', 'HEAD'].includes(request.method)
+          ? {
+              type:
+                request.body.type === 'json'
+                  ? 'application/json'
+                  : request.body.type === 'form'
+                    ? 'application/x-www-form-urlencoded'
+                    : 'text/plain',
+              examples: [{ name: '默认示例', value: bodyContent }]
+            }
+          : undefined
+    }
+  }
 }
 
 export function parseCurlCommand(input: string, collectionId?: string): HttpRequestSaveInput {
@@ -377,6 +799,186 @@ export function parsePostmanCollection(
   })
 }
 
+export function parseOpenApiDocument(input: string, collectionId?: string): HttpRequestSaveInput[] {
+  const parsed = JSON.parse(input) as OpenApiDocument
+  const requests: HttpRequestSaveInput[] = []
+
+  if (!parsed.paths || typeof parsed.paths !== 'object') {
+    throw new Error('OpenAPI 文档缺少 paths')
+  }
+
+  for (const [path, pathItem] of Object.entries(parsed.paths)) {
+    const sharedParameters = pathItem.parameters ?? []
+
+    for (const method of HTTP_METHODS) {
+      const operation = pathItem[method.toLowerCase() as Lowercase<HttpMethod>]
+      if (!operation) continue
+
+      const parts = openApiParametersToRequestParts([
+        ...sharedParameters,
+        ...(operation.parameters ?? [])
+      ])
+      const body = bodyFromOpenApiContent(operation.requestBody?.content)
+
+      requests.push({
+        collectionId,
+        name: operation.summary || operation.operationId || `${method} ${path}`,
+        method,
+        url: buildUrlFromOpenApiPath(path, parsed.servers),
+        description: operation.description || operation.summary || '从 OpenAPI 导入',
+        headers: parts.headers,
+        params: parts.params,
+        body,
+        auth: { type: 'none' },
+        tags: appendUniqueTags(operation.tags ?? [], 'openapi-import')
+      })
+    }
+  }
+
+  return requests
+}
+
+export function parseApifoxCollection(
+  input: string,
+  collectionId?: string
+): HttpRequestSaveInput[] {
+  const parsed = JSON.parse(input) as ApifoxDocument | OpenApiDocument | PostmanCollection
+
+  if ('openapi' in parsed || 'swagger' in parsed) {
+    return parseOpenApiDocument(input, collectionId).map((request) => ({
+      ...request,
+      tags: appendUniqueTags(request.tags ?? [], 'apifox-import')
+    }))
+  }
+
+  if (hasPostmanSchema(parsed)) {
+    return parsePostmanCollection(input, collectionId).map((request) => ({
+      ...request,
+      tags: appendUniqueTags(request.tags ?? [], 'apifox-import')
+    }))
+  }
+
+  const apifox = parsed as ApifoxDocument
+  const roots = apifox.apiCollection ?? apifox.items ?? []
+  const requests: HttpRequestSaveInput[] = []
+
+  function visit(items: ApifoxItem[]): void {
+    for (const item of items) {
+      const api = item.api ?? item.request
+      if (api) {
+        const method = normalizeMethod(api.method)
+        const parameters = api.parameters ?? {}
+        requests.push({
+          collectionId,
+          name: item.name || `${method} ${api.path ?? api.url ?? ''}`,
+          method,
+          url: api.url || api.path || '',
+          description: api.description || '从 Apifox 导入',
+          headers: apifoxParametersToKeyValues(parameters.header),
+          params: [
+            ...apifoxParametersToKeyValues(parameters.query),
+            ...apifoxParametersToKeyValues(parameters.path)
+          ],
+          body: bodyFromApifoxRequestBody(api.requestBody),
+          auth: { type: 'none' },
+          tags: appendUniqueTags(api.tags ?? [], 'apifox-import')
+        })
+      }
+
+      visit(item.items ?? [])
+      visit(item.children ?? [])
+    }
+  }
+
+  visit(roots)
+  if (requests.length === 0) {
+    throw new Error('Apifox 文档中没有可导入的接口')
+  }
+
+  return requests
+}
+
+export function exportCollectionAsOpenApi(
+  collection: HttpCollection,
+  requests: HttpRequestRecord[]
+): string {
+  const servers = new Set<string>()
+  const paths: NonNullable<OpenApiDocument['paths']> = {}
+  const securitySchemes: Record<string, unknown> = {}
+
+  for (const request of requests) {
+    const parsed = parseRequestUrlForExport(request.url)
+    if (parsed.serverUrl) servers.add(parsed.serverUrl)
+
+    const enabledHeaders = enabledKeyValues(request.headers).filter(
+      (header) => header.key.toLowerCase() !== 'content-type'
+    )
+    const headerKeys = new Set(enabledHeaders.map((header) => header.key))
+    const parameters: OpenApiParameter[] = [
+      ...enabledKeyValues(request.params),
+      ...parsed.queryParams,
+      ...enabledHeaders
+    ].map((item) => ({
+      name: item.key ?? '',
+      in: headerKeys.has(item.key ?? '') ? 'header' : 'query',
+      required: false,
+      description: item.description ?? '',
+      schema: { type: 'string' },
+      example:
+        'id' in item && item.id ? redactedHeaderValue(item as HttpKeyValue) : (item.value ?? '')
+    }))
+
+    const operation: OpenApiOperation = {
+      summary: request.name,
+      description: request.description,
+      operationId: `${request.method.toLowerCase()}_${request.id.replace(/[^a-zA-Z0-9_]/g, '_')}`,
+      tags: [collection.name],
+      parameters,
+      responses: {
+        '200': { description: '成功响应' }
+      }
+    }
+
+    const content = requestBodyToOpenApiContent(request.body)
+    if (content && !['GET', 'HEAD'].includes(request.method)) {
+      operation.requestBody = { content }
+    }
+
+    if (request.auth.type === 'bearer') {
+      securitySchemes.bearerAuth = { type: 'http', scheme: 'bearer' }
+      operation.security = [{ bearerAuth: [] }]
+    } else if (request.auth.type === 'basic') {
+      securitySchemes.basicAuth = { type: 'http', scheme: 'basic' }
+      operation.security = [{ basicAuth: [] }]
+    }
+
+    paths[parsed.path] = {
+      ...(paths[parsed.path] ?? {}),
+      [request.method.toLowerCase()]: operation
+    }
+  }
+
+  const document: OpenApiDocument = {
+    openapi: OPENAPI_VERSION,
+    info: {
+      title: collection.name,
+      description: collection.description || 'doggy-toolbox-web 导出的 API 集合',
+      version: '1.0.0'
+    },
+    servers: Array.from(servers).map((url) => ({ url })),
+    paths,
+    components: {
+      securitySchemes
+    }
+  }
+
+  if (document.servers?.length === 0) {
+    document.servers = [{ url: 'http://localhost' }]
+  }
+
+  return JSON.stringify(document, null, 2)
+}
+
 export function exportCollectionAsPostman(
   collection: HttpCollection,
   requests: HttpRequestRecord[]
@@ -427,6 +1029,26 @@ export function exportCollectionAsPostman(
         }
       }
     })
+  }
+
+  return JSON.stringify(document, null, 2)
+}
+
+export function exportCollectionAsApifox(
+  collection: HttpCollection,
+  requests: HttpRequestRecord[]
+): string {
+  const document: ApifoxDocument = {
+    info: {
+      name: collection.name,
+      description: collection.description || 'doggy-toolbox-web 导出的 Apifox 集合'
+    },
+    apiCollection: [
+      {
+        name: collection.name,
+        items: requests.map(requestToApifoxItem)
+      }
+    ]
   }
 
   return JSON.stringify(document, null, 2)

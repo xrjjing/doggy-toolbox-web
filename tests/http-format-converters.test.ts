@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { HttpRequestRecord } from '@shared/ipc-contract'
 import {
+  exportCollectionAsApifox,
+  exportCollectionAsOpenApi,
   exportCollectionAsPostman,
   exportRequestAsCurl,
   exportRequestAsHttpie,
+  parseApifoxCollection,
   parseCurlCommand,
+  parseOpenApiDocument,
   parsePostmanCollection
 } from '@renderer/features/http/http-format-converters'
 
@@ -173,6 +177,205 @@ describe('http format converters', () => {
       auth: {
         type: 'bearer',
         bearer: [{ key: 'token', value: '{{token}}' }]
+      }
+    })
+  })
+
+  it('parses OpenAPI 3 document into request inputs', () => {
+    const requests = parseOpenApiDocument(
+      JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: '用户接口', version: '1.0.0' },
+        servers: [{ url: 'https://api.example.com' }],
+        paths: {
+          '/users/{id}': {
+            get: {
+              summary: '查询用户',
+              description: '按 ID 查询用户',
+              tags: ['用户'],
+              parameters: [
+                { name: 'id', in: 'path', example: 'u_1' },
+                { name: 'includePosts', in: 'query', example: true },
+                { name: 'X-Trace', in: 'header', example: 'trace-1' }
+              ]
+            },
+            post: {
+              summary: '创建用户',
+              requestBody: {
+                content: {
+                  'application/json': {
+                    example: { name: 'doggy' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }),
+      'col_1'
+    )
+
+    expect(requests).toHaveLength(2)
+    expect(requests[0]).toMatchObject({
+      collectionId: 'col_1',
+      name: '查询用户',
+      method: 'GET',
+      url: 'https://api.example.com/users/{id}',
+      tags: ['用户', 'openapi-import']
+    })
+    expect(requests[0].params).toEqual([
+      {
+        key: 'id',
+        value: 'u_1',
+        enabled: true,
+        description: 'path'
+      },
+      {
+        key: 'includePosts',
+        value: 'true',
+        enabled: true,
+        description: 'query'
+      }
+    ])
+    expect(requests[0].headers).toEqual([
+      {
+        key: 'X-Trace',
+        value: 'trace-1',
+        enabled: true,
+        description: 'header'
+      }
+    ])
+    expect(requests[1]).toMatchObject({
+      method: 'POST',
+      body: {
+        type: 'json',
+        content: '{\n  "name": "doggy"\n}'
+      }
+    })
+  })
+
+  it('exports collection as OpenAPI 3 document', () => {
+    const parsed = JSON.parse(
+      exportCollectionAsOpenApi(
+        {
+          id: 'col_1',
+          name: '用户接口',
+          description: '用户相关接口',
+          order: 0,
+          createdAt: '',
+          updatedAt: ''
+        },
+        [createRequest()]
+      )
+    )
+
+    expect(parsed.openapi).toBe('3.0.3')
+    expect(parsed.info).toMatchObject({
+      title: '用户接口',
+      description: '用户相关接口'
+    })
+    expect(parsed.servers).toEqual([{ url: 'https://api.example.com' }])
+    expect(parsed.paths['/users'].post).toMatchObject({
+      summary: '创建用户',
+      requestBody: {
+        content: {
+          'application/json': {
+            example: { name: 'doggy' }
+          }
+        }
+      },
+      security: [{ bearerAuth: [] }]
+    })
+  })
+
+  it('parses Apifox apiCollection into request inputs', () => {
+    const requests = parseApifoxCollection(
+      JSON.stringify({
+        info: { name: '用户接口' },
+        apiCollection: [
+          {
+            name: '用户模块',
+            items: [
+              {
+                name: '创建用户',
+                api: {
+                  method: 'POST',
+                  path: '/users',
+                  description: '创建用户',
+                  tags: ['用户'],
+                  parameters: {
+                    query: [{ name: 'debug', value: '1' }],
+                    header: [{ name: 'X-Token', value: '{{token}}' }]
+                  },
+                  requestBody: {
+                    type: 'application/json',
+                    examples: [{ name: '默认示例', value: '{"name":"doggy"}' }]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }),
+      'col_1'
+    )
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]).toMatchObject({
+      collectionId: 'col_1',
+      name: '创建用户',
+      method: 'POST',
+      url: '/users',
+      description: '创建用户',
+      headers: [
+        {
+          key: 'X-Token',
+          value: '{{token}}',
+          enabled: true,
+          description: ''
+        }
+      ],
+      params: [
+        {
+          key: 'debug',
+          value: '1',
+          enabled: true,
+          description: ''
+        }
+      ],
+      body: {
+        type: 'json',
+        content: '{"name":"doggy"}'
+      },
+      tags: ['用户', 'apifox-import']
+    })
+  })
+
+  it('exports collection as Apifox compatible JSON', () => {
+    const parsed = JSON.parse(
+      exportCollectionAsApifox(
+        {
+          id: 'col_1',
+          name: '用户接口',
+          description: '',
+          order: 0,
+          createdAt: '',
+          updatedAt: ''
+        },
+        [createRequest()]
+      )
+    )
+
+    expect(parsed.info.name).toBe('用户接口')
+    expect(parsed.apiCollection[0].items[0]).toMatchObject({
+      name: '创建用户',
+      api: {
+        method: 'POST',
+        path: 'https://api.example.com/users',
+        requestBody: {
+          type: 'application/json',
+          examples: [{ name: '默认示例', value: '{"name":"doggy"}' }]
+        }
       }
     })
   })

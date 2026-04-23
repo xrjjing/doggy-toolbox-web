@@ -26,10 +26,14 @@ import type {
 } from '@shared/ipc-contract'
 import { useHttpCollectionsStore } from '@renderer/stores/http-collections'
 import {
+  exportCollectionAsApifox,
+  exportCollectionAsOpenApi,
   exportCollectionAsPostman,
   exportRequestAsCurl,
   exportRequestAsHttpie,
+  parseApifoxCollection,
   parseCurlCommand,
+  parseOpenApiDocument,
   parsePostmanCollection
 } from './http-format-converters'
 
@@ -63,7 +67,8 @@ type EnvironmentFormState = {
   variablesText: string
 }
 
-type ExportFormat = 'curl' | 'httpie' | 'postman'
+type CollectionImportFormat = 'postman' | 'openapi' | 'apifox'
+type ExportFormat = 'curl' | 'httpie' | 'postman' | 'openapi' | 'apifox'
 
 const message = useMessage()
 const httpStore = useHttpCollectionsStore()
@@ -71,10 +76,11 @@ const collectionModalVisible = ref(false)
 const requestModalVisible = ref(false)
 const environmentModalVisible = ref(false)
 const curlImportModalVisible = ref(false)
-const postmanImportModalVisible = ref(false)
+const collectionImportModalVisible = ref(false)
 const exportModalVisible = ref(false)
 const curlImportText = ref('')
-const postmanImportText = ref('')
+const collectionImportText = ref('')
+const collectionImportFormat = ref<CollectionImportFormat>('postman')
 const exportText = ref('')
 const exportFormat = ref<ExportFormat>('curl')
 const collectionForm = reactive<CollectionFormState>({
@@ -128,6 +134,11 @@ const authTypeOptions: Array<{ label: string; value: HttpAuth['type'] }> = [
 const collectionOptions = computed(() =>
   httpStore.collections.map((collection) => ({ label: collection.name, value: collection.id }))
 )
+const collectionImportOptions: Array<{ label: string; value: CollectionImportFormat }> = [
+  { label: 'Postman Collection v2.1', value: 'postman' },
+  { label: 'OpenAPI 3.x / Swagger', value: 'openapi' },
+  { label: 'Apifox JSON', value: 'apifox' }
+]
 const environmentOptions = computed(() => [
   { label: '不使用环境变量', value: '' },
   ...httpStore.environments.map((environment) => ({
@@ -151,6 +162,11 @@ const activeRequestTags = computed(() => httpStore.activeRequest?.tags ?? [])
 const isEditingCollection = computed(() => Boolean(collectionForm.id))
 const isEditingRequest = computed(() => Boolean(requestForm.id))
 const isEditingEnvironment = computed(() => Boolean(environmentForm.id))
+const collectionImportPlaceholder = computed(() => {
+  if (collectionImportFormat.value === 'openapi') return '粘贴 OpenAPI 3.x / Swagger JSON'
+  if (collectionImportFormat.value === 'apifox') return '粘贴 Apifox 导出的 JSON'
+  return '粘贴 Postman Collection v2.1 JSON'
+})
 
 function formatUpdatedAt(value: string): string {
   if (!value) return '等待初始化'
@@ -347,15 +363,23 @@ async function importCurlRequest(): Promise<void> {
   }
 }
 
-async function importPostmanRequests(): Promise<void> {
+async function importCollectionRequests(): Promise<void> {
   try {
-    const inputs = parsePostmanCollection(postmanImportText.value, httpStore.activeCollectionId)
+    const parsers = {
+      postman: parsePostmanCollection,
+      openapi: parseOpenApiDocument,
+      apifox: parseApifoxCollection
+    }
+    const inputs = parsers[collectionImportFormat.value](
+      collectionImportText.value,
+      httpStore.activeCollectionId
+    )
     for (const input of inputs) {
       await httpStore.saveRequest(input)
     }
-    postmanImportText.value = ''
-    postmanImportModalVisible.value = false
-    message.success(`Postman 已导入 ${inputs.length} 条请求`)
+    collectionImportText.value = ''
+    collectionImportModalVisible.value = false
+    message.success(`已导入 ${inputs.length} 条请求`)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -422,17 +446,21 @@ function openExportModal(format: ExportFormat): void {
   }
 
   exportFormat.value = format
-  if (format === 'postman') {
+  if (format === 'postman' || format === 'openapi' || format === 'apifox') {
     if (!httpStore.activeCollection) {
       message.warning('请先选择一个 HTTP 集合')
       return
     }
-    exportText.value = exportCollectionAsPostman(
-      httpStore.activeCollection,
-      httpStore.requests.filter(
-        (request) => request.collectionId === httpStore.activeCollection?.id
-      )
+    const requests = httpStore.requests.filter(
+      (request) => request.collectionId === httpStore.activeCollection?.id
     )
+    if (format === 'openapi') {
+      exportText.value = exportCollectionAsOpenApi(httpStore.activeCollection, requests)
+    } else if (format === 'apifox') {
+      exportText.value = exportCollectionAsApifox(httpStore.activeCollection, requests)
+    } else {
+      exportText.value = exportCollectionAsPostman(httpStore.activeCollection, requests)
+    }
   } else {
     exportText.value =
       format === 'curl'
@@ -440,6 +468,17 @@ function openExportModal(format: ExportFormat): void {
         : exportRequestAsHttpie(httpStore.activeRequest)
   }
   exportModalVisible.value = true
+}
+
+function exportTitle(format: ExportFormat): string {
+  const titles: Record<ExportFormat, string> = {
+    curl: '导出 cURL',
+    httpie: '导出 HTTPie',
+    postman: '导出 Postman Collection',
+    openapi: '导出 OpenAPI 3.x',
+    apifox: '导出 Apifox JSON'
+  }
+  return titles[format]
 }
 
 async function copyExportText(): Promise<void> {
@@ -536,7 +575,7 @@ onMounted(() => {
         批量测试
       </NButton>
       <NButton secondary @click="curlImportModalVisible = true">导入 cURL</NButton>
-      <NButton secondary @click="postmanImportModalVisible = true">导入 Postman</NButton>
+      <NButton secondary @click="collectionImportModalVisible = true">导入集合</NButton>
       <NButton type="primary" @click="openCreateRequestModal">新增请求</NButton>
     </div>
   </NCard>
@@ -679,6 +718,8 @@ onMounted(() => {
             <NButton secondary @click="openExportModal('curl')">导出 cURL</NButton>
             <NButton secondary @click="openExportModal('httpie')">导出 HTTPie</NButton>
             <NButton secondary @click="openExportModal('postman')">导出 Postman</NButton>
+            <NButton secondary @click="openExportModal('openapi')">导出 OpenAPI</NButton>
+            <NButton secondary @click="openExportModal('apifox')">导出 Apifox</NButton>
             <NPopconfirm @positive-click="removeRequest(httpStore.activeRequest.id)">
               <template #trigger>
                 <NButton tertiary type="error">删除请求</NButton>
@@ -1120,23 +1161,26 @@ onMounted(() => {
   </NModal>
 
   <NModal
-    v-model:show="postmanImportModalVisible"
+    v-model:show="collectionImportModalVisible"
     preset="card"
-    title="导入 Postman Collection"
+    title="导入集合"
     class="form-modal"
   >
     <NForm>
-      <NFormItem label="Postman Collection JSON">
+      <NFormItem label="导入格式">
+        <NSelect v-model:value="collectionImportFormat" :options="collectionImportOptions" />
+      </NFormItem>
+      <NFormItem label="集合 JSON">
         <NInput
-          v-model:value="postmanImportText"
+          v-model:value="collectionImportText"
           type="textarea"
           :autosize="{ minRows: 10, maxRows: 18 }"
-          placeholder="粘贴 Postman Collection v2.1 JSON"
+          :placeholder="collectionImportPlaceholder"
         />
       </NFormItem>
       <div class="action-row modal-actions">
-        <NButton secondary @click="postmanImportModalVisible = false">取消</NButton>
-        <NButton type="primary" :loading="httpStore.saving" @click="importPostmanRequests">
+        <NButton secondary @click="collectionImportModalVisible = false">取消</NButton>
+        <NButton type="primary" :loading="httpStore.saving" @click="importCollectionRequests">
           导入请求
         </NButton>
       </div>
@@ -1146,13 +1190,7 @@ onMounted(() => {
   <NModal
     v-model:show="exportModalVisible"
     preset="card"
-    :title="
-      exportFormat === 'curl'
-        ? '导出 cURL'
-        : exportFormat === 'httpie'
-          ? '导出 HTTPie'
-          : '导出 Postman Collection'
-    "
+    :title="exportTitle(exportFormat)"
     class="form-modal"
   >
     <NSpace vertical size="large">
