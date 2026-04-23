@@ -8,6 +8,8 @@ import CredentialsView from '@renderer/views/CredentialsView.vue'
 import PromptsView from '@renderer/views/PromptsView.vue'
 import BackupView from '@renderer/views/BackupView.vue'
 import LegacyImportPage from '@renderer/views/LegacyImportView.vue'
+import NodesView from '@renderer/views/NodesView.vue'
+import HttpCollectionsView from '@renderer/views/HttpCollectionsView.vue'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -36,6 +38,16 @@ export const router = createRouter({
       path: '/prompts',
       name: 'prompts',
       component: PromptsView
+    },
+    {
+      path: '/nodes',
+      name: 'nodes',
+      component: NodesView
+    },
+    {
+      path: '/http',
+      name: 'http-collections',
+      component: HttpCollectionsView
     },
     {
       path: '/backup',

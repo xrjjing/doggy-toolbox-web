@@ -26,7 +26,8 @@ const summaryCards = computed(() => {
     { label: '命令分组', value: summary?.commandTabs ?? 0 },
     { label: '凭证', value: summary?.credentials ?? 0 },
     { label: 'Prompt 分类', value: summary?.promptCategories ?? 0 },
-    { label: 'Prompt 模板', value: summary?.promptTemplates ?? 0 }
+    { label: 'Prompt 模板', value: summary?.promptTemplates ?? 0 },
+    { label: '节点', value: summary?.nodes ?? 0 }
   ]
 })
 const sectionOptions = computed(() =>
@@ -161,7 +162,7 @@ async function importSource(): Promise<void> {
       />
 
       <p class="muted">
-        旧项目总备份会覆盖命令或凭证模块；旧 Prompt 导出会按分类名称和模板标题做合并导入。
+        旧项目总备份会覆盖命令、凭证或节点模块；旧 Prompt 导出会按分类名称和模板标题做合并导入。
       </p>
 
       <div class="action-row">

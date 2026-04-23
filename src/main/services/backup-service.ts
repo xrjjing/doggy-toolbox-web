@@ -8,13 +8,23 @@ import type {
 } from '../../shared/ipc-contract'
 import type { CommandService } from './command-service'
 import type { CredentialService } from './credential-service'
+import type { HttpCollectionService } from './http-collection-service'
+import type { NodeService } from './node-service'
 import type { PromptService } from './prompt-service'
 
-const DEFAULT_SECTIONS: BackupSectionKey[] = ['commands', 'credentials', 'prompts']
+const DEFAULT_SECTIONS: BackupSectionKey[] = [
+  'commands',
+  'credentials',
+  'prompts',
+  'nodes',
+  'httpCollections'
+]
 
 export type BackupServiceDependencies = {
   commandService: CommandService
   credentialService: CredentialService
+  httpCollectionService: HttpCollectionService
+  nodeService: NodeService
   promptService: PromptService
 }
 
@@ -29,7 +39,12 @@ function createEmptySummary(): BackupSummary {
     commandTabs: 0,
     credentials: 0,
     promptCategories: 0,
-    promptTemplates: 0
+    promptTemplates: 0,
+    nodes: 0,
+    httpCollections: 0,
+    httpRequests: 0,
+    httpEnvironments: 0,
+    httpHistoryRecords: 0
   }
 }
 
@@ -71,6 +86,19 @@ export class BackupService {
       summary.promptTemplates = data.prompts.templates.length
     }
 
+    if (sections.includes('nodes')) {
+      data.nodes = await this.dependencies.nodeService.exportBackupSection()
+      summary.nodes = data.nodes.nodes.length
+    }
+
+    if (sections.includes('httpCollections')) {
+      data.httpCollections = await this.dependencies.httpCollectionService.exportBackupSection()
+      summary.httpCollections = data.httpCollections.collections.length
+      summary.httpRequests = data.httpCollections.requests.length
+      summary.httpEnvironments = data.httpCollections.environments.length
+      summary.httpHistoryRecords = data.httpCollections.history.length
+    }
+
     return {
       version: '1.0',
       app: 'doggy-toolbox-web',
@@ -105,6 +133,21 @@ export class BackupService {
       const state = await this.dependencies.promptService.restoreBackupSection(parsed.data.prompts)
       summary.promptCategories = state.categories.length
       summary.promptTemplates = state.templates.length
+    }
+
+    if (sections.includes('nodes') && parsed.data.nodes) {
+      const state = await this.dependencies.nodeService.restoreBackupSection(parsed.data.nodes)
+      summary.nodes = state.nodes.length
+    }
+
+    if (sections.includes('httpCollections') && parsed.data.httpCollections) {
+      const state = await this.dependencies.httpCollectionService.restoreBackupSection(
+        parsed.data.httpCollections
+      )
+      summary.httpCollections = state.collections.length
+      summary.httpRequests = state.requests.length
+      summary.httpEnvironments = state.environments.length
+      summary.httpHistoryRecords = state.history.length
     }
 
     return {

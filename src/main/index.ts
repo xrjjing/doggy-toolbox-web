@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { AiBridgeService } from './services/ai-bridge'
+import { AiChatHistoryService } from './services/ai-chat-history-service'
 import { BackupService } from './services/backup-service'
 import { CommandService } from './services/command-service'
 import {
@@ -10,6 +11,8 @@ import {
   plainCredentialSecretCodec,
   type CredentialSecretCodec
 } from './services/credential-service'
+import { HttpCollectionService } from './services/http-collection-service'
+import { NodeService } from './services/node-service'
 import { PromptService } from './services/prompt-service'
 import { LegacyImportService } from './services/legacy-import-service'
 import { getRuntimeInfo } from './utils/runtime'
@@ -20,7 +23,14 @@ import type {
   CommandSaveInput,
   CommandTabSaveInput,
   CredentialSaveInput,
+  HttpBatchExecuteInput,
+  HttpClearHistoryInput,
+  HttpCollectionSaveInput,
+  HttpEnvironmentSaveInput,
+  HttpExecuteRequestInput,
+  HttpRequestSaveInput,
   LegacyImportInput,
+  NodeSaveInput,
   PromptCategorySaveInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput
@@ -28,11 +38,14 @@ import type {
 
 let mainWindow: BrowserWindow | null = null
 let aiBridge: AiBridgeService
+let aiChatHistoryService: AiChatHistoryService
 let commandService: CommandService
 let credentialService: CredentialService
+let httpCollectionService: HttpCollectionService
 let promptService: PromptService
 let backupService: BackupService
 let legacyImportService: LegacyImportService
+let nodeService: NodeService
 
 function createCredentialSecretCodec(): CredentialSecretCodec {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -83,18 +96,32 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
-  aiBridge = new AiBridgeService(() => mainWindow)
+  aiChatHistoryService = new AiChatHistoryService(app.getPath('userData'))
+  aiBridge = new AiBridgeService(() => mainWindow, aiChatHistoryService)
   commandService = new CommandService(app.getPath('userData'))
   credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
+  httpCollectionService = new HttpCollectionService(app.getPath('userData'))
+  nodeService = new NodeService(app.getPath('userData'))
   promptService = new PromptService(app.getPath('userData'))
-  backupService = new BackupService({ commandService, credentialService, promptService })
+  backupService = new BackupService({
+    commandService,
+    credentialService,
+    httpCollectionService,
+    nodeService,
+    promptService
+  })
   legacyImportService = new LegacyImportService({
     commandService,
     credentialService,
+    nodeService,
     promptService
   })
 
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
+  ipcMain.handle('ai:get-history-state', () => aiChatHistoryService.getState())
+  ipcMain.handle('ai:get-session', (_event, sessionId: string) =>
+    aiChatHistoryService.getSession(sessionId)
+  )
   ipcMain.handle('ai:start-chat', (_event, input: AiStartChatInput) => aiBridge.startChat(input))
   ipcMain.handle('ai:cancel-chat', (_event, sessionId: string) => aiBridge.cancelChat(sessionId))
   ipcMain.handle('commands:get-state', () => commandService.getState())
@@ -113,6 +140,34 @@ function registerIpc(): void {
   )
   ipcMain.handle('credentials:delete', (_event, credentialId: string) =>
     credentialService.deleteCredential(credentialId)
+  )
+  ipcMain.handle('nodes:get-state', () => nodeService.getState())
+  ipcMain.handle('nodes:save', (_event, input: NodeSaveInput) => nodeService.saveNode(input))
+  ipcMain.handle('nodes:delete', (_event, nodeId: string) => nodeService.deleteNode(nodeId))
+  ipcMain.handle('http-collections:get-state', () => httpCollectionService.getState())
+  ipcMain.handle('http-collections:save-collection', (_event, input: HttpCollectionSaveInput) =>
+    httpCollectionService.saveCollection(input)
+  )
+  ipcMain.handle('http-collections:save-request', (_event, input: HttpRequestSaveInput) =>
+    httpCollectionService.saveRequest(input)
+  )
+  ipcMain.handle('http-collections:delete-request', (_event, requestId: string) =>
+    httpCollectionService.deleteRequest(requestId)
+  )
+  ipcMain.handle('http-collections:save-environment', (_event, input: HttpEnvironmentSaveInput) =>
+    httpCollectionService.saveEnvironment(input)
+  )
+  ipcMain.handle('http-collections:delete-environment', (_event, environmentId: string) =>
+    httpCollectionService.deleteEnvironment(environmentId)
+  )
+  ipcMain.handle('http-collections:execute-request', (_event, input: HttpExecuteRequestInput) =>
+    httpCollectionService.executeRequest(input)
+  )
+  ipcMain.handle('http-collections:execute-batch', (_event, input: HttpBatchExecuteInput) =>
+    httpCollectionService.executeBatch(input)
+  )
+  ipcMain.handle('http-collections:clear-history', (_event, input?: HttpClearHistoryInput) =>
+    httpCollectionService.clearHistory(input)
   )
   ipcMain.handle('prompts:get-state', () => promptService.getState())
   ipcMain.handle('prompts:save-category', (_event, input: PromptCategorySaveInput) =>

@@ -1,67 +1,59 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
-import { NButton, NCard, NInput, NRadioButton, NRadioGroup, NSpace, useMessage } from 'naive-ui'
-import type { AiProviderKind, AiStreamEvent } from '../../../shared/ipc-contract'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
+import {
+  NButton,
+  NCard,
+  NEmpty,
+  NInput,
+  NRadioButton,
+  NRadioGroup,
+  NSpace,
+  NTag,
+  useMessage
+} from 'naive-ui'
+import { useAiStore } from '@renderer/stores/ai'
 
 const message = useMessage()
-const provider = ref<AiProviderKind>('codex')
-const prompt = ref('请用三句话说明 doggy-toolbox-web 当前迁移状态。')
-const output = ref('')
-const activeSessionId = ref('')
-const running = ref(false)
-let unsubscribe: (() => void) | null = null
+const aiStore = useAiStore()
 
-const providerLabel = computed(() => (provider.value === 'codex' ? 'Codex SDK' : 'Claude Code SDK'))
+const providerLabel = computed(() =>
+  aiStore.provider === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
+)
 
-function handleStreamEvent(event: AiStreamEvent): void {
-  if (event.sessionId !== activeSessionId.value) return
-
-  if (event.type === 'delta' || event.type === 'thinking') {
-    output.value += event.text
-    return
-  }
-
-  if (event.type === 'error') {
-    running.value = false
-    message.error(event.message)
-    return
-  }
-
-  if (event.type === 'done') {
-    running.value = false
-  }
+function formatUpdatedAt(value: string): string {
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
 async function startChat(): Promise<void> {
-  if (!prompt.value.trim()) {
-    message.warning('请输入要发送给 AI 的内容')
-    return
-  }
-
-  output.value = ''
-  running.value = true
-  unsubscribe?.()
-  unsubscribe = window.doggy.onAiStreamEvent(handleStreamEvent)
-
   try {
-    const result = await window.doggy.aiStartChat({
-      provider: provider.value,
-      messages: [{ role: 'user', content: prompt.value }]
-    })
-    activeSessionId.value = result.sessionId
+    await aiStore.startChat()
   } catch (error) {
-    running.value = false
+    aiStore.running = false
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function openSession(sessionId: string): Promise<void> {
+  try {
+    await aiStore.loadSession(sessionId)
+  } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
 }
 
 async function cancelChat(): Promise<void> {
-  if (!activeSessionId.value) return
-  await window.doggy.aiCancelChat(activeSessionId.value)
+  await aiStore.cancelChat()
 }
 
+onMounted(async () => {
+  await aiStore.loadHistory()
+  if (aiStore.sessions[0]) {
+    await aiStore.loadSession(aiStore.sessions[0].id)
+  }
+})
+
 onBeforeUnmount(() => {
-  unsubscribe?.()
+  aiStore.disposeStream()
 })
 </script>
 
@@ -70,33 +62,80 @@ onBeforeUnmount(() => {
     <p class="eyebrow">local ai bridge</p>
     <h2>AI SDK Bridge 验证台</h2>
     <p>
-      新项目不再把 AI 当普通 HTTPS Provider。这里走 Electron Main Process， 由本地 SDK 读取 Codex /
-      Claude Code 配置。
+      新项目不再把 AI 当普通 HTTPS Provider。这里走 Electron Main Process，由本地 SDK 读取 Codex /
+      Claude Code 配置，并把对话历史落到本地资料库。
     </p>
   </section>
 
-  <NCard class="soft-card ai-panel" :bordered="false">
-    <NSpace vertical size="large">
-      <NRadioGroup v-model:value="provider">
-        <NRadioButton value="codex">Codex SDK</NRadioButton>
-        <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
-      </NRadioGroup>
+  <div class="http-shell is-two-pane">
+    <NCard class="soft-card http-collections-panel" :bordered="false">
+      <template #header>
+        <div class="card-title-row">
+          <span>会话历史</span>
+          <NTag size="small" :bordered="false">{{ aiStore.sessions.length }}</NTag>
+        </div>
+      </template>
 
-      <NInput
-        v-model:value="prompt"
-        type="textarea"
-        :autosize="{ minRows: 4, maxRows: 8 }"
-        placeholder="输入要发送给本机 AI SDK 的内容"
-      />
-
-      <div class="action-row">
-        <NButton type="primary" :loading="running" @click="startChat">
-          发送到 {{ providerLabel }}
-        </NButton>
-        <NButton secondary :disabled="!running" @click="cancelChat">取消</NButton>
+      <div v-if="aiStore.sessions.length > 0" class="http-history-list">
+        <button
+          v-for="session in aiStore.sessions"
+          :key="session.id"
+          class="tool-nav-item http-history-item"
+          :class="{ active: session.id === aiStore.activeSessionId }"
+          type="button"
+          @click="openSession(session.id)"
+        >
+          <div>
+            <strong>{{ session.title }}</strong>
+            <p>{{ session.preview || '暂无摘要' }}</p>
+          </div>
+          <span class="http-status-pill" :class="{ 'is-error': session.status === 'error' }">
+            {{ session.status }}
+          </span>
+        </button>
       </div>
+      <NEmpty v-else description="还没有 AI 会话记录" />
+    </NCard>
 
-      <pre class="stream-output">{{ output || '等待输出...' }}</pre>
-    </NSpace>
-  </NCard>
+    <NCard class="soft-card ai-panel" :bordered="false">
+      <NSpace vertical size="large">
+        <NRadioGroup :value="aiStore.provider" @update:value="aiStore.setProvider">
+          <NRadioButton value="codex">Codex SDK</NRadioButton>
+          <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
+        </NRadioGroup>
+
+        <NInput
+          :value="aiStore.prompt"
+          type="textarea"
+          :autosize="{ minRows: 4, maxRows: 8 }"
+          placeholder="输入要发送给本机 AI SDK 的内容"
+          @update:value="aiStore.setPrompt"
+        />
+
+        <div class="action-row">
+          <NButton type="primary" :loading="aiStore.running" @click="startChat">
+            发送到 {{ providerLabel }}
+          </NButton>
+          <NButton secondary :disabled="!aiStore.running" @click="cancelChat">取消</NButton>
+        </div>
+
+        <div v-if="aiStore.activeSession" class="http-response-stats">
+          <div>
+            <span>提供方</span>
+            <strong>{{ aiStore.activeSession.provider }}</strong>
+          </div>
+          <div>
+            <span>状态</span>
+            <strong>{{ aiStore.activeSession.status }}</strong>
+          </div>
+          <div>
+            <span>最近更新</span>
+            <strong>{{ formatUpdatedAt(aiStore.activeSession.updatedAt) }}</strong>
+          </div>
+        </div>
+
+        <pre class="stream-output">{{ aiStore.output || '等待输出...' }}</pre>
+      </NSpace>
+    </NCard>
+  </div>
 </template>

@@ -25,6 +25,7 @@ export type AiStartChatInput = {
   provider: AiProviderKind
   messages: AiChatMessage[]
   workingDirectory?: string
+  title?: string
 }
 
 export type AiStreamEvent =
@@ -68,6 +69,35 @@ export type AiStreamEvent =
 
 export type AiStartChatResult = {
   sessionId: string
+}
+
+export type AiChatSessionSummary = {
+  id: string
+  provider: AiProviderKind
+  title: string
+  preview: string
+  status: 'running' | 'done' | 'error' | 'cancelled'
+  createdAt: string
+  updatedAt: string
+}
+
+export type AiChatSessionRecord = {
+  id: string
+  provider: AiProviderKind
+  title: string
+  workingDirectory: string
+  status: 'running' | 'done' | 'error' | 'cancelled'
+  createdAt: string
+  updatedAt: string
+  messages: AiChatMessage[]
+  output: string
+  errorMessage?: string
+}
+
+export type AiChatHistoryState = {
+  storageFile: string
+  updatedAt: string
+  sessions: AiChatSessionSummary[]
 }
 
 export type CommandTab = {
@@ -204,7 +234,217 @@ export type PromptModuleState = {
   templates: PromptTemplate[]
 }
 
-export type BackupSectionKey = 'commands' | 'credentials' | 'prompts'
+export type NodeRecord = {
+  id: string
+  name: string
+  type: string
+  server: string
+  port: number
+  rawLink: string
+  configText: string
+  tags: string[]
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type NodeSaveInput = {
+  id?: string
+  name: string
+  type: string
+  server: string
+  port: number
+  rawLink?: string
+  configText?: string
+  tags?: string[]
+}
+
+export type NodeModuleState = {
+  storageFile: string
+  updatedAt: string
+  nodes: NodeRecord[]
+}
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+
+export type HttpKeyValue = {
+  id: string
+  key: string
+  value: string
+  enabled: boolean
+  description: string
+}
+
+export type HttpBody = {
+  type: 'none' | 'json' | 'text' | 'form'
+  content: string
+}
+
+export type HttpAuth = {
+  type: 'none' | 'bearer' | 'basic'
+  token: string
+  username: string
+  password: string
+}
+
+export type HttpCollection = {
+  id: string
+  name: string
+  description: string
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type HttpRequestRecord = {
+  id: string
+  collectionId: string
+  name: string
+  method: HttpMethod
+  url: string
+  description: string
+  headers: HttpKeyValue[]
+  params: HttpKeyValue[]
+  body: HttpBody
+  auth: HttpAuth
+  tags: string[]
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type HttpEnvironmentVariable = HttpKeyValue
+
+export type HttpEnvironment = {
+  id: string
+  name: string
+  variables: HttpEnvironmentVariable[]
+  order: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type HttpCollectionSaveInput = {
+  id?: string
+  name: string
+  description?: string
+}
+
+export type HttpRequestSaveInput = {
+  id?: string
+  collectionId?: string
+  name: string
+  method?: HttpMethod
+  url?: string
+  description?: string
+  headers?: Array<Partial<HttpKeyValue>>
+  params?: Array<Partial<HttpKeyValue>>
+  body?: Partial<HttpBody>
+  auth?: Partial<HttpAuth>
+  tags?: string[]
+}
+
+export type HttpEnvironmentSaveInput = {
+  id?: string
+  name: string
+  variables?: Array<Partial<HttpEnvironmentVariable>>
+}
+
+export type HttpCollectionModuleState = {
+  storageFile: string
+  defaultCollectionId: string
+  updatedAt: string
+  collections: HttpCollection[]
+  requests: HttpRequestRecord[]
+  environments: HttpEnvironment[]
+  history: HttpExecutionHistoryRecord[]
+}
+
+export type HttpResolvedRequest = {
+  requestId: string
+  environmentId?: string
+  method: HttpMethod
+  url: string
+  headers: Array<Pick<HttpKeyValue, 'key' | 'value'>>
+  bodyType: HttpBody['type']
+  body: string
+  unresolvedVariables: string[]
+}
+
+export type HttpExecuteRequestInput = {
+  requestId: string
+  environmentId?: string
+  timeoutMs?: number
+}
+
+export type HttpResponseHeader = {
+  key: string
+  value: string
+}
+
+export type HttpExecuteRequestResult = {
+  requestId: string
+  environmentId?: string
+  executedAt: string
+  durationMs: number
+  ok: boolean
+  status: number
+  statusText: string
+  headers: HttpResponseHeader[]
+  body: string
+  bodySizeBytes: number
+  resolvedRequest: HttpResolvedRequest
+  errorMessage?: string
+}
+
+export type HttpExecutionHistoryRecord = {
+  id: string
+  requestId: string
+  requestName: string
+  environmentId?: string
+  environmentName?: string
+  method: HttpMethod
+  url: string
+  executedAt: string
+  durationMs: number
+  ok: boolean
+  status: number
+  statusText: string
+  responseHeaders: HttpResponseHeader[]
+  responseBody: string
+  responseBodySizeBytes: number
+  responseBodyTruncated: boolean
+  resolvedRequest: HttpResolvedRequest
+  errorMessage?: string
+}
+
+export type HttpClearHistoryInput = {
+  requestId?: string
+}
+
+export type HttpBatchExecuteInput = {
+  collectionId?: string
+  requestIds?: string[]
+  environmentId?: string
+  timeoutMs?: number
+}
+
+export type HttpBatchExecuteSummary = {
+  total: number
+  succeeded: number
+  failed: number
+  durationMs: number
+}
+
+export type HttpBatchExecuteResult = {
+  collectionId?: string
+  environmentId?: string
+  executedAt: string
+  summary: HttpBatchExecuteSummary
+  results: HttpExecuteRequestResult[]
+}
+
+export type BackupSectionKey = 'commands' | 'credentials' | 'prompts' | 'nodes' | 'httpCollections'
 
 export type BackupSummary = {
   commands: number
@@ -212,6 +452,11 @@ export type BackupSummary = {
   credentials: number
   promptCategories: number
   promptTemplates: number
+  nodes: number
+  httpCollections: number
+  httpRequests: number
+  httpEnvironments: number
+  httpHistoryRecords: number
 }
 
 export type BackupDocument = {
@@ -224,6 +469,11 @@ export type BackupDocument = {
     commands?: Pick<CommandModuleState, 'tabs' | 'commands'>
     credentials?: Pick<CredentialModuleState, 'credentials'>
     prompts?: Pick<PromptModuleState, 'categories' | 'templates'>
+    nodes?: Pick<NodeModuleState, 'nodes'>
+    httpCollections?: Pick<
+      HttpCollectionModuleState,
+      'collections' | 'requests' | 'environments' | 'history'
+    >
   }
 }
 
@@ -267,6 +517,8 @@ export type LegacyImportResult = {
 
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
+  getAiChatHistoryState: () => Promise<AiChatHistoryState>
+  getAiChatSession: (sessionId: string) => Promise<AiChatSessionRecord | null>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
   aiCancelChat: (sessionId: string) => Promise<{ ok: boolean }>
   onAiStreamEvent: (handler: (event: AiStreamEvent) => void) => () => void
@@ -277,6 +529,18 @@ export type BridgeApi = {
   getCredentialsState: () => Promise<CredentialModuleState>
   saveCredential: (input: CredentialSaveInput) => Promise<CredentialRecord>
   deleteCredential: (credentialId: string) => Promise<{ ok: boolean }>
+  getNodesState: () => Promise<NodeModuleState>
+  saveNode: (input: NodeSaveInput) => Promise<NodeRecord>
+  deleteNode: (nodeId: string) => Promise<{ ok: boolean }>
+  getHttpCollectionsState: () => Promise<HttpCollectionModuleState>
+  saveHttpCollection: (input: HttpCollectionSaveInput) => Promise<HttpCollection>
+  saveHttpRequest: (input: HttpRequestSaveInput) => Promise<HttpRequestRecord>
+  deleteHttpRequest: (requestId: string) => Promise<{ ok: boolean }>
+  saveHttpEnvironment: (input: HttpEnvironmentSaveInput) => Promise<HttpEnvironment>
+  deleteHttpEnvironment: (environmentId: string) => Promise<{ ok: boolean }>
+  executeHttpRequest: (input: HttpExecuteRequestInput) => Promise<HttpExecuteRequestResult>
+  executeHttpBatch: (input: HttpBatchExecuteInput) => Promise<HttpBatchExecuteResult>
+  clearHttpHistory: (input?: HttpClearHistoryInput) => Promise<{ ok: boolean; removed: number }>
   getPromptState: () => Promise<PromptModuleState>
   savePromptCategory: (input: PromptCategorySaveInput) => Promise<PromptCategory>
   deletePromptCategory: (categoryId: string) => Promise<{ ok: boolean }>

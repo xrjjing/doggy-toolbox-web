@@ -2,13 +2,22 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AiStreamEvent,
   AiStartChatInput,
+  AiChatHistoryState,
+  AiChatSessionRecord,
   BackupExportInput,
   BackupImportInput,
   BridgeApi,
   CommandSaveInput,
   CommandTabSaveInput,
   CredentialSaveInput,
+  HttpBatchExecuteInput,
+  HttpClearHistoryInput,
+  HttpCollectionSaveInput,
+  HttpEnvironmentSaveInput,
+  HttpExecuteRequestInput,
+  HttpRequestSaveInput,
   LegacyImportInput,
+  NodeSaveInput,
   PromptCategorySaveInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput
@@ -16,6 +25,10 @@ import type {
 
 const api: BridgeApi = {
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:get-info'),
+  getAiChatHistoryState: (): Promise<AiChatHistoryState> =>
+    ipcRenderer.invoke('ai:get-history-state'),
+  getAiChatSession: (sessionId: string): Promise<AiChatSessionRecord | null> =>
+    ipcRenderer.invoke('ai:get-session', sessionId),
   aiStartChat: (input: AiStartChatInput) => ipcRenderer.invoke('ai:start-chat', input),
   aiCancelChat: (sessionId: string) => ipcRenderer.invoke('ai:cancel-chat', sessionId),
   onAiStreamEvent: (handler: (event: AiStreamEvent) => void) => {
@@ -33,6 +46,26 @@ const api: BridgeApi = {
   saveCredential: (input: CredentialSaveInput) => ipcRenderer.invoke('credentials:save', input),
   deleteCredential: (credentialId: string) =>
     ipcRenderer.invoke('credentials:delete', credentialId),
+  getNodesState: () => ipcRenderer.invoke('nodes:get-state'),
+  saveNode: (input: NodeSaveInput) => ipcRenderer.invoke('nodes:save', input),
+  deleteNode: (nodeId: string) => ipcRenderer.invoke('nodes:delete', nodeId),
+  getHttpCollectionsState: () => ipcRenderer.invoke('http-collections:get-state'),
+  saveHttpCollection: (input: HttpCollectionSaveInput) =>
+    ipcRenderer.invoke('http-collections:save-collection', input),
+  saveHttpRequest: (input: HttpRequestSaveInput) =>
+    ipcRenderer.invoke('http-collections:save-request', input),
+  deleteHttpRequest: (requestId: string) =>
+    ipcRenderer.invoke('http-collections:delete-request', requestId),
+  saveHttpEnvironment: (input: HttpEnvironmentSaveInput) =>
+    ipcRenderer.invoke('http-collections:save-environment', input),
+  deleteHttpEnvironment: (environmentId: string) =>
+    ipcRenderer.invoke('http-collections:delete-environment', environmentId),
+  executeHttpRequest: (input: HttpExecuteRequestInput) =>
+    ipcRenderer.invoke('http-collections:execute-request', input),
+  executeHttpBatch: (input: HttpBatchExecuteInput) =>
+    ipcRenderer.invoke('http-collections:execute-batch', input),
+  clearHttpHistory: (input?: HttpClearHistoryInput) =>
+    ipcRenderer.invoke('http-collections:clear-history', input),
   getPromptState: () => ipcRenderer.invoke('prompts:get-state'),
   savePromptCategory: (input: PromptCategorySaveInput) =>
     ipcRenderer.invoke('prompts:save-category', input),

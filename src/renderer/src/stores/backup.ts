@@ -11,11 +11,19 @@ import type {
 export const backupSectionOptions: Array<{ label: string; value: BackupSectionKey }> = [
   { label: '命令管理', value: 'commands' },
   { label: '凭证管理', value: 'credentials' },
-  { label: 'Prompt 模板', value: 'prompts' }
+  { label: 'Prompt 模板', value: 'prompts' },
+  { label: '节点列表', value: 'nodes' },
+  { label: 'HTTP 集合', value: 'httpCollections' }
 ]
 
 export const useBackupStore = defineStore('backup', () => {
-  const selectedSections = ref<BackupSectionKey[]>(['commands', 'credentials', 'prompts'])
+  const selectedSections = ref<BackupSectionKey[]>([
+    'commands',
+    'credentials',
+    'prompts',
+    'nodes',
+    'httpCollections'
+  ])
   const exportedDocument = ref<BackupDocument | null>(null)
   const importResult = ref<BackupImportResult | null>(null)
   const importText = ref('')

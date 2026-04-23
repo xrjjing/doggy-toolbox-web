@@ -3,9 +3,11 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NSwitch, NTag } from 'naive-ui'
 import {
+  AlbumsOutline,
   ChatbubblesOutline,
   CloudUploadOutline,
   DownloadOutline,
+  GlobeOutline,
   KeyOutline,
   LibraryOutline,
   GridOutline,
@@ -27,6 +29,8 @@ const navItems = [
   { path: '/commands', label: '命令管理', icon: TerminalOutline },
   { path: '/credentials', label: '凭证管理', icon: KeyOutline },
   { path: '/prompts', label: 'Prompt 模板', icon: LibraryOutline },
+  { path: '/nodes', label: '节点列表', icon: AlbumsOutline },
+  { path: '/http', label: 'HTTP 集合', icon: GlobeOutline },
   { path: '/backup', label: '备份恢复', icon: CloudUploadOutline },
   { path: '/legacy-import', label: '旧数据导入', icon: DownloadOutline },
   { path: '/ai', label: 'AI Bridge', icon: ChatbubblesOutline },
