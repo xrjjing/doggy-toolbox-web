@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { AiBridgeService } from './services/ai-bridge'
 import { AiChatHistoryService } from './services/ai-chat-history-service'
 import { AiProviderRouter } from './services/ai-provider-router'
+import { AiSdkRuntimeManager } from './services/ai-sdk-runtime-manager'
 import { AiSettingsService } from './services/ai-settings-service'
 import { AiSessionService } from './services/ai-session-service'
 import { BackupService } from './services/backup-service'
@@ -19,16 +20,23 @@ import {
 import { HttpCollectionService } from './services/http-collection-service'
 import { LocalAiRuntimeService } from './services/local-ai-runtime-service'
 import { NodeService } from './services/node-service'
+import { NodeConverterService } from './services/node-converter-service'
 import { PromptService } from './services/prompt-service'
 import { LegacyImportService } from './services/legacy-import-service'
 import { getRuntimeInfo } from './utils/runtime'
 import type {
+  AppAppearance,
   AiSettingsSaveInput,
+  AiProviderKind,
   AiStartChatInput,
   BackupExportInput,
   BackupImportInput,
+  CommandImportInput,
+  CommandMoveInput,
+  CommandReorderInput,
   CommandSaveInput,
   CommandTabSaveInput,
+  CredentialImportInput,
   CredentialSaveInput,
   HttpBatchExecuteInput,
   HttpClearHistoryInput,
@@ -38,7 +46,11 @@ import type {
   HttpRequestSaveInput,
   LegacyImportInput,
   NodeSaveInput,
+  PromptExportInput,
+  PromptImportInput,
   PromptCategorySaveInput,
+  PromptSaveAsTemplateInput,
+  PromptTemplateReorderInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput
 } from '../shared/ipc-contract'
@@ -49,6 +61,7 @@ let aiChatHistoryService: AiChatHistoryService
 let aiSettingsService: AiSettingsService
 let aiSessionService: AiSessionService
 let aiRuntimeService: LocalAiRuntimeService
+let aiSdkRuntimeManager: AiSdkRuntimeManager
 let commandService: CommandService
 let credentialService: CredentialService
 let httpCollectionService: HttpCollectionService
@@ -56,6 +69,77 @@ let promptService: PromptService
 let backupService: BackupService
 let legacyImportService: LegacyImportService
 let nodeService: NodeService
+let nodeConverterService: NodeConverterService
+let currentAppearance: AppAppearance | null = null
+
+const DEFAULT_WINDOW_APPEARANCE: AppAppearance = {
+  theme: 'dark',
+  glassMode: false,
+  glassOpacity: 60,
+  uiScale: 80,
+  titlebarMode: 'fixed'
+}
+
+function normalizeAppearance(input?: Partial<AppAppearance> | null): AppAppearance {
+  const themes = new Set([
+    'light',
+    'cute',
+    'office',
+    'neon-light',
+    'cyberpunk-light',
+    'dark',
+    'neon',
+    'cyberpunk',
+    'void'
+  ])
+  return {
+    theme: input?.theme && themes.has(input.theme) ? input.theme : DEFAULT_WINDOW_APPEARANCE.theme,
+    glassMode: Boolean(input?.glassMode),
+    glassOpacity: Number.isFinite(input?.glassOpacity)
+      ? Math.max(45, Math.min(95, Number(input?.glassOpacity)))
+      : DEFAULT_WINDOW_APPEARANCE.glassOpacity,
+    uiScale: Number.isFinite(input?.uiScale)
+      ? Math.max(50, Math.min(100, Number(input?.uiScale)))
+      : DEFAULT_WINDOW_APPEARANCE.uiScale,
+    titlebarMode:
+      input?.titlebarMode === 'minimal' ? 'minimal' : DEFAULT_WINDOW_APPEARANCE.titlebarMode
+  }
+}
+
+function resolveWindowBackground(theme: AppAppearance['theme']): string {
+  if (theme === 'light' || theme === 'office') return '#f5f7fb'
+  if (theme === 'cute') return '#fff1f7'
+  if (theme === 'neon-light') return '#ecfeff'
+  if (theme === 'cyberpunk-light') return '#faf5ff'
+  if (theme === 'void') return '#090805'
+  if (theme === 'neon') return '#07111f'
+  if (theme === 'cyberpunk') return '#13051f'
+  return '#111827'
+}
+
+function applyWindowAppearance(window: BrowserWindow, appearance: AppAppearance): void {
+  window.setBackgroundColor(resolveWindowBackground(appearance.theme))
+  window.webContents.setZoomFactor(appearance.uiScale / 100)
+
+  if (process.platform === 'darwin') {
+    try {
+      if (appearance.glassMode) {
+        window.setVibrancy(appearance.titlebarMode === 'minimal' ? 'sidebar' : 'under-window')
+      } else {
+        window.setVibrancy(null)
+      }
+    } catch {
+      // 某些 Electron / macOS 组合对 vibrancy 支持有限，不让 UI 因此中断。
+    }
+    try {
+      window.setWindowButtonPosition(
+        appearance.titlebarMode === 'minimal' ? { x: 18, y: 18 } : { x: 16, y: 16 }
+      )
+    } catch {
+      // 仅在支持该 API 的平台生效。
+    }
+  }
+}
 
 /**
  * 凭证只允许在主进程内做加解密。
@@ -98,6 +182,9 @@ function createWindow(): void {
     }
   })
 
+  currentAppearance = normalizeAppearance(currentAppearance ?? DEFAULT_WINDOW_APPEARANCE)
+  applyWindowAppearance(mainWindow, currentAppearance)
+
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
   })
@@ -129,11 +216,12 @@ function createWindow(): void {
 function registerIpc(): void {
   aiChatHistoryService = new AiChatHistoryService(app.getPath('userData'))
   aiSettingsService = new AiSettingsService(app.getPath('userData'))
-  aiRuntimeService = new LocalAiRuntimeService()
+  aiSdkRuntimeManager = new AiSdkRuntimeManager(app.getPath('userData'))
+  aiRuntimeService = new LocalAiRuntimeService(aiSdkRuntimeManager)
   const providerRouter = new AiProviderRouter(
     {
-      codex: new CodexSdkBridge(aiRuntimeService),
-      'claude-code': new ClaudeAgentBridge(aiRuntimeService)
+      codex: new CodexSdkBridge(aiRuntimeService, aiSdkRuntimeManager),
+      'claude-code': new ClaudeAgentBridge(aiRuntimeService, aiSdkRuntimeManager)
     },
     aiRuntimeService
   )
@@ -147,6 +235,7 @@ function registerIpc(): void {
   credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
   httpCollectionService = new HttpCollectionService(app.getPath('userData'))
   nodeService = new NodeService(app.getPath('userData'))
+  nodeConverterService = new NodeConverterService()
   promptService = new PromptService(app.getPath('userData'))
   backupService = new BackupService({
     aiSettingsService,
@@ -165,6 +254,13 @@ function registerIpc(): void {
 
   // Runtime / AI
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
+  ipcMain.handle('appearance:apply', (_event, input: AppAppearance) => {
+    currentAppearance = normalizeAppearance(input)
+    if (mainWindow) {
+      applyWindowAppearance(mainWindow, currentAppearance)
+    }
+    return { ok: true }
+  })
   ipcMain.handle('ai:get-history-state', () => aiChatHistoryService.getState())
   ipcMain.handle('ai:get-session', (_event, sessionId: string) =>
     aiChatHistoryService.getSession(sessionId)
@@ -172,6 +268,16 @@ function registerIpc(): void {
   ipcMain.handle('ai:get-settings-state', () => aiSettingsService.getState())
   ipcMain.handle('ai:save-settings', (_event, input: AiSettingsSaveInput) =>
     aiSettingsService.saveSettings(input)
+  )
+  ipcMain.handle('ai-sdk-runtime:get-state', () => aiSdkRuntimeManager.getState())
+  ipcMain.handle('ai-sdk-runtime:install', (_event, provider: AiProviderKind) =>
+    aiSdkRuntimeManager.install(provider)
+  )
+  ipcMain.handle('ai-sdk-runtime:update', (_event, provider: AiProviderKind) =>
+    aiSdkRuntimeManager.update(provider)
+  )
+  ipcMain.handle('ai-sdk-runtime:uninstall', (_event, provider: AiProviderKind) =>
+    aiSdkRuntimeManager.uninstall(provider)
   )
   ipcMain.handle('ai:start-chat', (_event, input: AiStartChatInput) => aiBridge.startChat(input))
   ipcMain.handle('ai:cancel-chat', (_event, sessionId: string) => aiBridge.cancelChat(sessionId))
@@ -184,6 +290,18 @@ function registerIpc(): void {
   ipcMain.handle('commands:save-command', (_event, input: CommandSaveInput) =>
     commandService.saveCommand(input)
   )
+  ipcMain.handle('commands:import', (_event, input: CommandImportInput) =>
+    commandService.importCommands(input)
+  )
+  ipcMain.handle('commands:reorder-tabs', (_event, tabIds: string[]) =>
+    commandService.reorderTabs(tabIds)
+  )
+  ipcMain.handle('commands:move', (_event, input: CommandMoveInput) =>
+    commandService.moveCommandToTab(input)
+  )
+  ipcMain.handle('commands:reorder', (_event, input: CommandReorderInput) =>
+    commandService.reorderCommands(input)
+  )
   ipcMain.handle('commands:delete-command', (_event, commandId: string) =>
     commandService.deleteCommand(commandId)
   )
@@ -193,6 +311,12 @@ function registerIpc(): void {
   ipcMain.handle('credentials:save', (_event, input: CredentialSaveInput) =>
     credentialService.saveCredential(input)
   )
+  ipcMain.handle('credentials:import', (_event, input: CredentialImportInput) =>
+    credentialService.importCredentials(input)
+  )
+  ipcMain.handle('credentials:reorder', (_event, credentialIds: string[]) =>
+    credentialService.reorderCredentials(credentialIds)
+  )
   ipcMain.handle('credentials:delete', (_event, credentialId: string) =>
     credentialService.deleteCredential(credentialId)
   )
@@ -201,6 +325,15 @@ function registerIpc(): void {
   ipcMain.handle('nodes:get-state', () => nodeService.getState())
   ipcMain.handle('nodes:save', (_event, input: NodeSaveInput) => nodeService.saveNode(input))
   ipcMain.handle('nodes:delete', (_event, nodeId: string) => nodeService.deleteNode(nodeId))
+  ipcMain.handle('nodes:convert-text', (_event, input: string) =>
+    nodeConverterService.convertText(input)
+  )
+  ipcMain.handle('nodes:fetch-subscription', (_event, input: string) =>
+    nodeConverterService.fetchSubscription(input)
+  )
+  ipcMain.handle('nodes:validate-converted', (_event, input: string) =>
+    nodeConverterService.validateConvertedNodes(input)
+  )
 
   // HTTP collections
   ipcMain.handle('http-collections:get-state', () => httpCollectionService.getState())
@@ -234,11 +367,20 @@ function registerIpc(): void {
   ipcMain.handle('prompts:save-category', (_event, input: PromptCategorySaveInput) =>
     promptService.saveCategory(input)
   )
+  ipcMain.handle('prompts:reorder-categories', (_event, categoryIds: string[]) =>
+    promptService.reorderCategories(categoryIds)
+  )
   ipcMain.handle('prompts:delete-category', (_event, categoryId: string) =>
     promptService.deleteCategory(categoryId)
   )
   ipcMain.handle('prompts:save-template', (_event, input: PromptTemplateSaveInput) =>
     promptService.saveTemplate(input)
+  )
+  ipcMain.handle('prompts:save-as-template', (_event, input: PromptSaveAsTemplateInput) =>
+    promptService.saveAsTemplate(input)
+  )
+  ipcMain.handle('prompts:reorder-templates', (_event, input: PromptTemplateReorderInput) =>
+    promptService.reorderTemplates(input)
   )
   ipcMain.handle('prompts:delete-template', (_event, templateId: string) =>
     promptService.deleteTemplate(templateId)
@@ -251,6 +393,12 @@ function registerIpc(): void {
   )
   ipcMain.handle('prompts:parse-variables', (_event, content: string) =>
     promptService.parseVariables(content)
+  )
+  ipcMain.handle('prompts:export', (_event, input?: PromptExportInput) =>
+    promptService.exportTemplates(input)
+  )
+  ipcMain.handle('prompts:import', (_event, input: PromptImportInput) =>
+    promptService.importTemplates(input)
   )
 
   // Backup / legacy import

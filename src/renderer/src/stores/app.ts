@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia'
-import type { RuntimeInfo } from '../../../shared/ipc-contract'
+import type {
+  AppAppearance,
+  AppThemeId,
+  RuntimeInfo,
+  TitlebarMode
+} from '../../../shared/ipc-contract'
+
+export type { AppAppearance, AppThemeId, TitlebarMode } from '../../../shared/ipc-contract'
 
 /**
  * 应用级外观与运行时信息 store。
@@ -10,31 +17,6 @@ import type { RuntimeInfo } from '../../../shared/ipc-contract'
 /**
  * 新仓沿用旧项目的九套主题名称，方便迁移时对照原有视觉风格。
  */
-export type AppThemeId =
-  | 'light'
-  | 'cute'
-  | 'office'
-  | 'neon-light'
-  | 'cyberpunk-light'
-  | 'dark'
-  | 'neon'
-  | 'cyberpunk'
-  | 'void'
-
-export type TitlebarMode = 'fixed' | 'minimal'
-
-/**
- * 这组配置是 renderer 侧可即时预览的外观状态。
- * 目前先持久化到 localStorage；后续若接入主进程配置文件，可复用同一结构。
- */
-export type AppAppearance = {
-  theme: AppThemeId
-  glassMode: boolean
-  glassOpacity: number
-  uiScale: number
-  titlebarMode: TitlebarMode
-}
-
 /**
  * 旧项目毛玻璃不是线性透明度，而是做过一层幂函数映射。
  * 保留这层转换后，新仓的 45-95 输入区间更接近旧视觉手感。
@@ -82,9 +64,9 @@ const APPEARANCE_STORAGE_KEY = 'doggy-toolbox-web:appearance'
  */
 export const defaultAppearance: AppAppearance = {
   theme: 'dark',
-  glassMode: false,
-  glassOpacity: 60,
-  uiScale: 100,
+  glassMode: true,
+  glassOpacity: 72,
+  uiScale: 80,
   titlebarMode: 'fixed'
 }
 
@@ -159,6 +141,9 @@ export const useAppStore = defineStore('app', {
      */
     previewAppearance(nextAppearance: AppAppearance) {
       this.appearance = normalizeAppearance(nextAppearance)
+      void window.doggy.applyAppearance(this.appearance).catch(() => {
+        // 预览失败不阻断 renderer 本地态，避免设置弹窗变成不可操作状态。
+      })
     },
     /**
      * 把完整外观快照写回 store 并持久化。
@@ -167,6 +152,9 @@ export const useAppStore = defineStore('app', {
     commitAppearance(nextAppearance: AppAppearance) {
       this.appearance = normalizeAppearance(nextAppearance)
       saveAppearance(this.appearance)
+      void window.doggy.applyAppearance(this.appearance).catch(() => {
+        // 主进程窗口应用失败时仍保留本地设置，用户可继续调整或刷新。
+      })
     },
     /**
      * 统一通过这一入口变更外观。

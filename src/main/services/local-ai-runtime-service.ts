@@ -3,11 +3,13 @@ import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type {
+  AiSdkRuntimeState,
   LocalRuntimeFact,
   LocalRuntimeFileState,
   LocalRuntimeStatus,
   RuntimeInfo
 } from '../../shared/ipc-contract'
+import type { AiSdkRuntimeManager } from './ai-sdk-runtime-manager'
 
 /**
  * 对 `~/.codex` 配置的最小可见快照。
@@ -16,7 +18,7 @@ import type {
 type CodexConfigSnapshot = {
   configPath: string
   authPath: string
-  available: boolean
+  configDetected: boolean
   model?: string
   baseUrl?: string
   serviceTier?: string
@@ -30,7 +32,7 @@ type CodexConfigSnapshot = {
  */
 type ClaudeConfigSnapshot = {
   configPath: string
-  available: boolean
+  configDetected: boolean
   installMethod?: string
   autoUpdates?: boolean
   projectsCount?: number
@@ -75,6 +77,8 @@ function createFact(label: string, value: string | undefined): LocalRuntimeFact 
  * 3. 给 provider bridge 提供初始化 SDK 所需的最小运行时快照。
  */
 export class LocalAiRuntimeService {
+  constructor(private readonly sdkRuntimeManager?: AiSdkRuntimeManager) {}
+
   async getCodexSnapshot(): Promise<CodexConfigSnapshot> {
     const configPath = join(homedir(), '.codex', 'config.toml')
     const authPath = join(homedir(), '.codex', 'auth.json')
@@ -84,7 +88,7 @@ export class LocalAiRuntimeService {
     return {
       configPath,
       authPath,
-      available: hasConfig || hasAuth,
+      configDetected: hasConfig || hasAuth,
       model: parseTomlScalar(rawConfig, 'model'),
       baseUrl: parseTomlScalar(rawConfig, 'base_url'),
       serviceTier: parseTomlScalar(rawConfig, 'service_tier'),
@@ -95,9 +99,9 @@ export class LocalAiRuntimeService {
 
   async getClaudeSnapshot(): Promise<ClaudeConfigSnapshot> {
     const configPath = join(homedir(), '.claude.json')
-    const available = await fileExists(configPath)
-    if (!available) {
-      return { configPath, available: false }
+    const configDetected = await fileExists(configPath)
+    if (!configDetected) {
+      return { configPath, configDetected: false }
     }
 
     try {
@@ -108,7 +112,7 @@ export class LocalAiRuntimeService {
         projects && typeof projects === 'object' ? Object.keys(projects as object).length : 0
       return {
         configPath,
-        available: true,
+        configDetected: true,
         installMethod: typeof parsed.installMethod === 'string' ? parsed.installMethod : undefined,
         autoUpdates: typeof parsed.autoUpdates === 'boolean' ? parsed.autoUpdates : undefined,
         projectsCount
@@ -116,13 +120,16 @@ export class LocalAiRuntimeService {
     } catch {
       return {
         configPath,
-        available: true
+        configDetected: true
       }
     }
   }
 
   async getCodexStatus(): Promise<LocalRuntimeStatus> {
-    const snapshot = await this.getCodexSnapshot()
+    const [snapshot, runtimeStatus] = await Promise.all([
+      this.getCodexSnapshot(),
+      this.sdkRuntimeManager?.getStatus('codex')
+    ])
     const facts = [
       createFact('model', snapshot.model),
       createFact('base_url', snapshot.baseUrl),
@@ -131,22 +138,46 @@ export class LocalAiRuntimeService {
       createFact('sandbox_mode', snapshot.sandboxMode)
     ].filter((fact): fact is LocalRuntimeFact => Boolean(fact))
 
+    const checkedAt = new Date().toISOString()
+    const probe = this.createProviderProbe({
+      checkedAt,
+      provider: 'codex',
+      configDetected: snapshot.configDetected,
+      runtimeInstalled: Boolean(runtimeStatus?.installed),
+      runtimeLastError: runtimeStatus?.lastError
+    })
+
     return {
-      available: snapshot.available,
-      checkedAt: new Date().toISOString(),
-      details: snapshot.available ? '已检测到本机 Codex 配置或登录态' : '未检测到 ~/.codex 配置',
+      available: probe.status === 'success',
+      checkedAt,
+      details:
+        probe.status === 'success'
+          ? 'Codex SDK runtime 与本机配置均已就绪'
+          : probe.status === 'failed'
+            ? 'Codex 本机链路不完整，请先完成 runtime 安装或修复登录态'
+            : 'Codex 运行时已跳过探测，请先补齐本机配置与 runtime',
       configPath: snapshot.configPath,
       authPath: snapshot.authPath,
       files: [
         createFileState('config.toml', snapshot.configPath, await fileExists(snapshot.configPath)),
         createFileState('auth.json', snapshot.authPath, await fileExists(snapshot.authPath))
       ],
-      facts
+      facts,
+      configDetected: snapshot.configDetected,
+      runtimeInstalled: Boolean(runtimeStatus?.installed),
+      runtimeInstallPath: runtimeStatus?.installPath,
+      runtimeVersion: runtimeStatus?.installedVersion,
+      runtimePackageManager: runtimeStatus?.packageManager,
+      runtimeLastError: runtimeStatus?.lastError,
+      probe
     }
   }
 
   async getClaudeStatus(): Promise<LocalRuntimeStatus> {
-    const snapshot = await this.getClaudeSnapshot()
+    const [snapshot, runtimeStatus] = await Promise.all([
+      this.getClaudeSnapshot(),
+      this.sdkRuntimeManager?.getStatus('claude-code')
+    ])
     const facts = [
       createFact('install_method', snapshot.installMethod),
       createFact(
@@ -159,13 +190,34 @@ export class LocalAiRuntimeService {
       )
     ].filter((fact): fact is LocalRuntimeFact => Boolean(fact))
 
+    const checkedAt = new Date().toISOString()
+    const probe = this.createProviderProbe({
+      checkedAt,
+      provider: 'claude-code',
+      configDetected: snapshot.configDetected,
+      runtimeInstalled: Boolean(runtimeStatus?.installed),
+      runtimeLastError: runtimeStatus?.lastError
+    })
+
     return {
-      available: snapshot.available,
-      checkedAt: new Date().toISOString(),
-      details: snapshot.available ? '已检测到本机 Claude Code 配置' : '未检测到 ~/.claude.json',
+      available: probe.status === 'success',
+      checkedAt,
+      details:
+        probe.status === 'success'
+          ? 'Claude Agent runtime 与本机配置均已就绪'
+          : probe.status === 'failed'
+            ? 'Claude 本机链路不完整，请先完成 runtime 安装或检查 ~/.claude.json'
+            : 'Claude 运行时已跳过探测，请先补齐本机配置与 runtime',
       configPath: snapshot.configPath,
-      files: [createFileState('~/.claude.json', snapshot.configPath, snapshot.available)],
-      facts
+      files: [createFileState('~/.claude.json', snapshot.configPath, snapshot.configDetected)],
+      facts,
+      configDetected: snapshot.configDetected,
+      runtimeInstalled: Boolean(runtimeStatus?.installed),
+      runtimeInstallPath: runtimeStatus?.installPath,
+      runtimeVersion: runtimeStatus?.installedVersion,
+      runtimePackageManager: runtimeStatus?.packageManager,
+      runtimeLastError: runtimeStatus?.lastError,
+      probe
     }
   }
 
@@ -176,7 +228,11 @@ export class LocalAiRuntimeService {
     dataDir: string
   }): Promise<RuntimeInfo> {
     // 两套运行时探测互不依赖，直接并行读取可减少总览页加载时间。
-    const [codex, claude] = await Promise.all([this.getCodexStatus(), this.getClaudeStatus()])
+    const [codex, claude, aiSdkRuntime] = await Promise.all([
+      this.getCodexStatus(),
+      this.getClaudeStatus(),
+      this.sdkRuntimeManager?.getState().catch(() => this.createFallbackRuntimeState())
+    ])
 
     return {
       appName: input.appName,
@@ -184,7 +240,94 @@ export class LocalAiRuntimeService {
       platform: input.platform,
       dataDir: input.dataDir,
       codex,
-      claude
+      claude,
+      aiSdkRuntime: aiSdkRuntime ?? this.createFallbackRuntimeState()
+    }
+  }
+
+  private createFallbackRuntimeState(): AiSdkRuntimeState {
+    const checkedAt = new Date().toISOString()
+    return {
+      checkedAt,
+      runtimes: {
+        codex: {
+          provider: 'codex',
+          label: 'Codex SDK',
+          packageName: '@openai/codex-sdk',
+          desiredVersion: '0.122.0',
+          installPath: '',
+          installed: false,
+          packageManager: 'unavailable'
+        },
+        'claude-code': {
+          provider: 'claude-code',
+          label: 'Claude Agent SDK',
+          packageName: '@anthropic-ai/claude-agent-sdk',
+          desiredVersion: '0.2.118',
+          installPath: '',
+          installed: false,
+          packageManager: 'unavailable'
+        }
+      }
+    }
+  }
+
+  private createProviderProbe(input: {
+    checkedAt: string
+    provider: 'codex' | 'claude-code'
+    configDetected: boolean
+    runtimeInstalled: boolean
+    runtimeLastError?: string
+  }): LocalRuntimeStatus['probe'] {
+    if (!input.configDetected && !input.runtimeInstalled) {
+      return {
+        status: 'skipped',
+        checkedAt: input.checkedAt,
+        message:
+          input.provider === 'codex'
+            ? '未检测到 ~/.codex 配置，且 runtime 未安装'
+            : '未检测到 ~/.claude.json，且 runtime 未安装'
+      }
+    }
+
+    if (!input.configDetected) {
+      return {
+        status: 'failed',
+        checkedAt: input.checkedAt,
+        message:
+          input.provider === 'codex'
+            ? 'Codex runtime 已安装，但本机 ~/.codex 配置缺失'
+            : 'Claude runtime 已安装，但 ~/.claude.json 缺失'
+      }
+    }
+
+    if (!input.runtimeInstalled) {
+      return {
+        status: 'failed',
+        checkedAt: input.checkedAt,
+        message:
+          input.provider === 'codex'
+            ? '已检测到 Codex 配置，但 AI SDK runtime 尚未安装到应用目录'
+            : '已检测到 Claude 配置，但 AI SDK runtime 尚未安装到应用目录'
+      }
+    }
+
+    if (input.runtimeLastError) {
+      return {
+        status: 'failed',
+        checkedAt: input.checkedAt,
+        message: 'runtime 已安装，但最近一次安装或读取存在错误',
+        error: input.runtimeLastError
+      }
+    }
+
+    return {
+      status: 'success',
+      checkedAt: input.checkedAt,
+      message:
+        input.provider === 'codex'
+          ? 'Codex 本机配置与 runtime 均已具备'
+          : 'Claude 本机配置与 runtime 均已具备'
     }
   }
 }

@@ -12,7 +12,8 @@ const appStore = useAppStore()
       <AppShell
         :style="{
           '--glass-opacity': mapGlassOpacitySetting(appStore.appearance.glassOpacity),
-          '--ui-scale': appStore.appearance.uiScale / 100
+          '--ui-scale': appStore.appearance.uiScale / 100,
+          '--ui-inverse-scale': 100 / appStore.appearance.uiScale
         }"
       />
     </NMessageProvider>

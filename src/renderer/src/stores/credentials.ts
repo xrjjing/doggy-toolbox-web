@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type {
+  CredentialImportInput,
+  CredentialImportResult,
   CredentialModuleState,
   CredentialRecord,
   CredentialSaveInput
@@ -96,6 +98,27 @@ export const useCredentialsStore = defineStore('credentials', () => {
     }
   }
 
+  async function importCredentials(input: CredentialImportInput): Promise<CredentialImportResult> {
+    saving.value = true
+    try {
+      const result = await window.doggy.importCredentials(input)
+      await load()
+      return result
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function reorderCredentials(credentialIds: string[]): Promise<void> {
+    saving.value = true
+    try {
+      await window.doggy.reorderCredentials(credentialIds)
+      await load()
+    } finally {
+      saving.value = false
+    }
+  }
+
   function setSearch(value: string): void {
     search.value = value
   }
@@ -113,6 +136,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
     secretEncoding,
     load,
     saveCredential,
+    importCredentials,
+    reorderCredentials,
     removeCredential,
     setSearch
   }

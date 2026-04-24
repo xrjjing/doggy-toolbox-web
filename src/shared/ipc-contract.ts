@@ -14,6 +14,7 @@ export type RuntimeInfo = {
   dataDir: string
   codex: LocalRuntimeStatus
   claude: LocalRuntimeStatus
+  aiSdkRuntime: AiSdkRuntimeState
 }
 
 export type LocalRuntimeFileState = {
@@ -27,6 +28,13 @@ export type LocalRuntimeFact = {
   value: string
 }
 
+export type LocalRuntimeProbe = {
+  status: 'success' | 'failed' | 'skipped'
+  checkedAt: string
+  message: string
+  error?: string
+}
+
 export type LocalRuntimeStatus = {
   available: boolean
   checkedAt: string
@@ -35,6 +43,34 @@ export type LocalRuntimeStatus = {
   authPath?: string
   files: LocalRuntimeFileState[]
   facts: LocalRuntimeFact[]
+  configDetected: boolean
+  runtimeInstalled: boolean
+  runtimeInstallPath?: string
+  runtimeVersion?: string
+  runtimePackageManager?: AiSdkRuntimeStatus['packageManager']
+  runtimeLastError?: string
+  probe: LocalRuntimeProbe
+}
+
+export type AppThemeId =
+  | 'light'
+  | 'cute'
+  | 'office'
+  | 'neon-light'
+  | 'cyberpunk-light'
+  | 'dark'
+  | 'neon'
+  | 'cyberpunk'
+  | 'void'
+
+export type TitlebarMode = 'fixed' | 'minimal'
+
+export type AppAppearance = {
+  theme: AppThemeId
+  glassMode: boolean
+  glassOpacity: number
+  uiScale: number
+  titlebarMode: TitlebarMode
 }
 
 /**
@@ -44,6 +80,37 @@ export type LocalRuntimeStatus = {
 export type AiProviderKind = 'codex' | 'claude-code'
 
 export type AiTransportKind = 'codex-sdk' | 'claude-agent-sdk'
+
+/**
+ * AI SDK 不再作为主应用常驻依赖，而是按 provider 安装到用户数据目录。
+ * 这里的状态只描述“运行时包”本身，不包含 ~/.codex / ~/.claude.json 这类账号配置。
+ */
+export type AiSdkRuntimeStatus = {
+  provider: AiProviderKind
+  label: string
+  packageName: string
+  desiredVersion: string
+  installPath: string
+  installed: boolean
+  installedVersion?: string
+  packageManager?: 'bundled-pnpm' | 'pnpm' | 'corepack-pnpm' | 'npm' | 'unavailable'
+  sizeBytes?: number
+  updatedAt?: string
+  lastError?: string
+}
+
+export type AiSdkRuntimeState = {
+  checkedAt: string
+  runtimes: Record<AiProviderKind, AiSdkRuntimeStatus>
+}
+
+export type AiSdkRuntimeOperationResult = {
+  ok: boolean
+  status: AiSdkRuntimeStatus
+  command?: string
+  stdout?: string
+  stderr?: string
+}
 
 export type AiSessionPhase =
   | 'idle'
@@ -265,6 +332,34 @@ export type CommandSaveInput = {
   tags?: string[]
 }
 
+export type CommandMoveInput = {
+  commandId: string
+  targetTabId: string
+}
+
+export type CommandReorderInput = {
+  tabId: string
+  commandIds: string[]
+}
+
+export type ImportedCommandBlock = {
+  title: string
+  description: string
+  lines: string[]
+  tabId: string
+  tags: string[]
+}
+
+export type CommandImportInput = {
+  text: string
+  tabId?: string
+}
+
+export type CommandImportResult = {
+  imported: number
+  blocks: ImportedCommandBlock[]
+}
+
 export type CommandModuleState = {
   storageFile: string
   defaultTabId: string
@@ -296,6 +391,15 @@ export type CredentialSaveInput = {
   account?: string
   password?: string
   extra?: string[]
+}
+
+export type CredentialImportInput = {
+  text: string
+}
+
+export type CredentialImportResult = {
+  imported: number
+  credentials: Array<Pick<CredentialRecord, 'service' | 'url' | 'account' | 'password' | 'extra'>>
 }
 
 export type CredentialModuleState = {
@@ -362,6 +466,56 @@ export type PromptTemplateUseResult = {
   template: PromptTemplate
 }
 
+export type PromptTemplateReorderInput = {
+  categoryId?: string
+  templateIds: string[]
+}
+
+export type PromptSaveAsTemplateInput = {
+  content: string
+  title?: string
+  categoryId?: string
+  description?: string
+  tags?: string[]
+}
+
+export type PromptExportCategory = {
+  id: string
+  name: string
+  icon: string
+}
+
+export type PromptExportTemplate = {
+  title: string
+  content: string
+  description: string
+  tags: string[]
+  category_id?: string
+}
+
+export type PromptExportInput = {
+  templateIds?: string[]
+  includeCategories?: boolean
+}
+
+export type PromptExportDocument = {
+  version: '1.0'
+  export_time: string
+  categories?: PromptExportCategory[]
+  templates: PromptExportTemplate[]
+}
+
+export type PromptImportInput = {
+  json: string
+  overwrite?: boolean
+}
+
+export type PromptImportResult = {
+  imported: number
+  skipped: number
+  errors: string[]
+}
+
 export type PromptModuleState = {
   storageFile: string
   updatedAt: string
@@ -398,6 +552,35 @@ export type NodeModuleState = {
   storageFile: string
   updatedAt: string
   nodes: NodeRecord[]
+}
+
+export type NodeConversionRecord = {
+  name: string
+  type: string
+  server: string
+  port: number
+  rawLink: string
+  configText: string
+  tags: string[]
+}
+
+export type NodeConversionResult = {
+  nodes: NodeConversionRecord[]
+  yaml: string
+  json: string
+  errors: string[]
+}
+
+export type NodeValidationResult = {
+  name: string
+  type: string
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export type NodeSubscriptionFetchResult = NodeConversionResult & {
+  sourceText: string
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
@@ -671,23 +854,37 @@ export type LegacyImportResult = {
  */
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
+  applyAppearance: (appearance: AppAppearance) => Promise<{ ok: boolean }>
   getAiChatHistoryState: () => Promise<AiChatHistoryState>
   getAiChatSession: (sessionId: string) => Promise<AiChatSessionRecord | null>
   getAiSettingsState: () => Promise<AiSettingsState>
   saveAiSettings: (input: AiSettingsSaveInput) => Promise<AiSettingsState>
+  getAiSdkRuntimeState: () => Promise<AiSdkRuntimeState>
+  installAiSdkRuntime: (provider: AiProviderKind) => Promise<AiSdkRuntimeOperationResult>
+  updateAiSdkRuntime: (provider: AiProviderKind) => Promise<AiSdkRuntimeOperationResult>
+  uninstallAiSdkRuntime: (provider: AiProviderKind) => Promise<AiSdkRuntimeOperationResult>
   aiStartChat: (input: AiStartChatInput) => Promise<AiStartChatResult>
   aiCancelChat: (sessionId: string) => Promise<{ ok: boolean }>
   onAiStreamEvent: (handler: (event: AiStreamEvent) => void) => () => void
   getCommandsState: () => Promise<CommandModuleState>
   saveCommandTab: (input: CommandTabSaveInput) => Promise<CommandTab>
   saveCommand: (input: CommandSaveInput) => Promise<CommandRecord>
+  importCommands: (input: CommandImportInput) => Promise<CommandImportResult>
+  reorderCommandTabs: (tabIds: string[]) => Promise<{ ok: boolean }>
+  moveCommandToTab: (input: CommandMoveInput) => Promise<CommandRecord>
+  reorderCommands: (input: CommandReorderInput) => Promise<{ ok: boolean }>
   deleteCommand: (commandId: string) => Promise<{ ok: boolean }>
   getCredentialsState: () => Promise<CredentialModuleState>
   saveCredential: (input: CredentialSaveInput) => Promise<CredentialRecord>
+  importCredentials: (input: CredentialImportInput) => Promise<CredentialImportResult>
+  reorderCredentials: (credentialIds: string[]) => Promise<{ ok: boolean }>
   deleteCredential: (credentialId: string) => Promise<{ ok: boolean }>
   getNodesState: () => Promise<NodeModuleState>
   saveNode: (input: NodeSaveInput) => Promise<NodeRecord>
   deleteNode: (nodeId: string) => Promise<{ ok: boolean }>
+  convertNodeText: (input: string) => Promise<NodeConversionResult>
+  fetchNodeSubscription: (input: string) => Promise<NodeSubscriptionFetchResult>
+  validateConvertedNodes: (input: string) => Promise<NodeValidationResult[]>
   getHttpCollectionsState: () => Promise<HttpCollectionModuleState>
   saveHttpCollection: (input: HttpCollectionSaveInput) => Promise<HttpCollection>
   saveHttpRequest: (input: HttpRequestSaveInput) => Promise<HttpRequestRecord>
@@ -699,12 +896,17 @@ export type BridgeApi = {
   clearHttpHistory: (input?: HttpClearHistoryInput) => Promise<{ ok: boolean; removed: number }>
   getPromptState: () => Promise<PromptModuleState>
   savePromptCategory: (input: PromptCategorySaveInput) => Promise<PromptCategory>
+  reorderPromptCategories: (categoryIds: string[]) => Promise<{ ok: boolean }>
   deletePromptCategory: (categoryId: string) => Promise<{ ok: boolean }>
   savePromptTemplate: (input: PromptTemplateSaveInput) => Promise<PromptTemplate>
+  savePromptAsTemplate: (input: PromptSaveAsTemplateInput) => Promise<PromptTemplate>
+  reorderPromptTemplates: (input: PromptTemplateReorderInput) => Promise<{ ok: boolean }>
   deletePromptTemplate: (templateId: string) => Promise<{ ok: boolean }>
   togglePromptFavorite: (templateId: string) => Promise<{ isFavorite: boolean }>
   usePromptTemplate: (input: PromptTemplateUseInput) => Promise<PromptTemplateUseResult>
   parsePromptVariables: (content: string) => Promise<PromptVariable[]>
+  exportPromptTemplates: (input?: PromptExportInput) => Promise<PromptExportDocument>
+  importPromptTemplates: (input: PromptImportInput) => Promise<PromptImportResult>
   exportBackup: (input?: BackupExportInput) => Promise<BackupDocument>
   importBackup: (input: BackupImportInput) => Promise<BackupImportResult>
   analyzeLegacyImport: (json: string) => Promise<LegacyImportAnalysis>

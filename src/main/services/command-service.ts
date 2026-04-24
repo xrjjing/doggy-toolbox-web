@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  CommandImportInput,
+  CommandImportResult,
+  CommandMoveInput,
+  CommandReorderInput,
   CommandModuleState,
   CommandRecord,
   CommandSaveInput,
@@ -52,6 +56,13 @@ function sanitizeLines(lines: string[] | undefined): string[] {
 
 function sanitizeTags(tags: string[] | undefined): string[] {
   return Array.from(new Set((tags ?? []).map((tag) => sanitizeText(tag)).filter(Boolean)))
+}
+
+function sanitizeTabId(value: string | undefined, validTabIds: Set<string>): string {
+  if (value && validTabIds.has(value)) {
+    return value
+  }
+  return DEFAULT_TAB_ID
 }
 
 function normalizeState(raw: StoredCommandState | null | undefined): StoredCommandState {
@@ -112,6 +123,75 @@ function sortCommands(commands: CommandRecord[], tabs: CommandTab[]): CommandRec
     if (left.order !== right.order) return left.order - right.order
     return left.createdAt.localeCompare(right.createdAt)
   })
+}
+
+function parseImportedBlocks(text: string): Array<{
+  title: string
+  description: string
+  lines: string[]
+}> {
+  const importedBlocks: Array<{
+    title: string
+    description: string
+    lines: string[]
+  }> = []
+  let currentTitle = ''
+  let currentDescription = ''
+  let currentLines: string[] = []
+
+  for (const rawLine of String(text ?? '').split('\n')) {
+    const line = rawLine.replace(/\r/g, '').trim()
+
+    if (!line) {
+      if (currentTitle && currentLines.length > 0) {
+        importedBlocks.push({
+          title: currentTitle,
+          description: currentDescription,
+          lines: currentLines
+        })
+      }
+      currentTitle = ''
+      currentDescription = ''
+      currentLines = []
+      continue
+    }
+
+    if ((line.endsWith(':') || line.endsWith('：')) && !line.startsWith('#')) {
+      if (currentTitle && currentLines.length > 0) {
+        importedBlocks.push({
+          title: currentTitle,
+          description: currentDescription,
+          lines: currentLines
+        })
+      }
+      currentTitle = line.replace(/[:：]\s*$/, '').trim()
+      currentDescription = ''
+      currentLines = []
+      continue
+    }
+
+    if (line.startsWith('#')) {
+      const comment = line.replace(/^#+\s*/, '').trim()
+      if (!currentTitle) {
+        currentTitle = comment
+      } else {
+        currentDescription = currentDescription ? `${currentDescription} ${comment}` : comment
+      }
+      continue
+    }
+
+    currentLines.push(line)
+  }
+
+  if (currentTitle && currentLines.length > 0) {
+    importedBlocks.push({
+      title: currentTitle,
+      description: currentDescription,
+      lines: currentLines
+    })
+  }
+
+  return importedBlocks
 }
 
 /**
@@ -178,6 +258,32 @@ export class CommandService {
     }
 
     return savedTab
+  }
+
+  async reorderTabs(tabIds: string[]): Promise<{ ok: boolean }> {
+    const normalizedIds = Array.from(new Set(tabIds.map((id) => sanitizeText(id)).filter(Boolean)))
+    await this.updateState((state) => {
+      const tabMap = new Map(state.tabs.map((tab) => [tab.id, tab]))
+      let nextOrder = 0
+
+      const reorderedTabs = normalizedIds
+        .map((id) => tabMap.get(id))
+        .filter((tab): tab is CommandTab => Boolean(tab))
+        .map((tab) => ({ ...tab, order: nextOrder++ }))
+
+      for (const tab of [...state.tabs].sort((left, right) => left.order - right.order)) {
+        if (normalizedIds.includes(tab.id)) continue
+        reorderedTabs.push({ ...tab, order: nextOrder++ })
+      }
+
+      return {
+        ...state,
+        updatedAt: nowIso(),
+        tabs: reorderedTabs.sort((left, right) => left.order - right.order)
+      }
+    })
+
+    return { ok: true }
   }
 
   async saveCommand(input: CommandSaveInput): Promise<CommandRecord> {
@@ -250,6 +356,92 @@ export class CommandService {
     return savedCommand
   }
 
+  async moveCommandToTab(input: CommandMoveInput): Promise<CommandRecord> {
+    const commandId = sanitizeText(input.commandId)
+    const targetTabId = sanitizeText(input.targetTabId)
+    if (!commandId || !targetTabId) {
+      throw new Error('命令或目标分组不能为空')
+    }
+
+    let movedCommand: CommandRecord | null = null
+
+    await this.updateState((state) => {
+      const validTabIds = new Set(state.tabs.map((tab) => tab.id))
+      const resolvedTabId = sanitizeTabId(targetTabId, validTabIds)
+      const commands = state.commands.map((command) => {
+        if (command.id !== commandId) return command
+        movedCommand = {
+          ...command,
+          tabId: resolvedTabId,
+          order: this.getNextCommandOrder(state.commands, resolvedTabId, command.id),
+          updatedAt: nowIso()
+        }
+        return movedCommand
+      })
+
+      if (!movedCommand) {
+        throw new Error('命令不存在')
+      }
+
+      return {
+        ...state,
+        updatedAt: nowIso(),
+        commands: sortCommands(commands, state.tabs)
+      }
+    })
+
+    if (!movedCommand) {
+      throw new Error('命令移动失败')
+    }
+
+    return movedCommand
+  }
+
+  async reorderCommands(input: CommandReorderInput): Promise<{ ok: boolean }> {
+    const tabId = sanitizeText(input.tabId)
+    const commandIds = Array.from(
+      new Set((input.commandIds ?? []).map((id) => sanitizeText(id)).filter(Boolean))
+    )
+    if (!tabId) {
+      return { ok: false }
+    }
+
+    await this.updateState((state) => {
+      const targetCommands = state.commands.filter((command) => command.tabId === tabId)
+      const commandMap = new Map(targetCommands.map((command) => [command.id, command]))
+
+      let nextOrder = 0
+      const reorderedIds = new Set<string>()
+      for (const commandId of commandIds) {
+        const command = commandMap.get(commandId)
+        if (!command) continue
+        reorderedIds.add(commandId)
+        commandMap.set(commandId, { ...command, order: nextOrder++, updatedAt: nowIso() })
+      }
+
+      const remainingCommands = [...commandMap.values()]
+        .filter((command) => !reorderedIds.has(command.id))
+        .sort((left, right) => left.order - right.order)
+        .map((command) => ({ ...command, order: nextOrder++, updatedAt: nowIso() }))
+
+      const reorderedMap = new Map<string, CommandRecord>([
+        ...[...commandMap.entries()].filter(([id]) => reorderedIds.has(id)),
+        ...remainingCommands.map((command) => [command.id, command] as const)
+      ])
+
+      return {
+        ...state,
+        updatedAt: nowIso(),
+        commands: sortCommands(
+          state.commands.map((command) => reorderedMap.get(command.id) ?? command),
+          state.tabs
+        )
+      }
+    })
+
+    return { ok: true }
+  }
+
   async deleteCommand(commandId: string): Promise<{ ok: boolean }> {
     const normalizedId = sanitizeText(commandId)
     if (!normalizedId) {
@@ -277,6 +469,55 @@ export class CommandService {
     })
 
     return { ok: removed }
+  }
+
+  async importCommands(input: CommandImportInput): Promise<CommandImportResult> {
+    const importedBlocks = parseImportedBlocks(input.text)
+    if (importedBlocks.length === 0) {
+      return { imported: 0, blocks: [] }
+    }
+
+    let blocks: CommandImportResult['blocks'] = []
+
+    await this.updateState((state) => {
+      const validTabIds = new Set(state.tabs.map((tab) => tab.id))
+      const targetTabId = sanitizeTabId(input.tabId, validTabIds)
+      const timestamp = nowIso()
+      const commands = [...state.commands]
+
+      blocks = importedBlocks.map((block) => {
+        const record: CommandRecord = {
+          id: randomUUID(),
+          title: sanitizeText(block.title) || '未命名命令',
+          description: sanitizeText(block.description),
+          lines: sanitizeLines(block.lines),
+          tabId: targetTabId,
+          tags: [],
+          order: this.getNextCommandOrder(commands, targetTabId),
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+        commands.push(record)
+        return {
+          title: record.title,
+          description: record.description,
+          lines: record.lines,
+          tabId: record.tabId,
+          tags: record.tags
+        }
+      })
+
+      return {
+        ...state,
+        updatedAt: timestamp,
+        commands: sortCommands(commands, state.tabs)
+      }
+    })
+
+    return {
+      imported: blocks.length,
+      blocks
+    }
   }
 
   async exportBackupSection(): Promise<Pick<CommandModuleState, 'tabs' | 'commands'>> {

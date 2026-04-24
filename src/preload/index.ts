@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  AiProviderKind,
+  AppAppearance,
   AiSettingsSaveInput,
+  AiSdkRuntimeOperationResult,
+  AiSdkRuntimeState,
   AiSettingsState,
   AiStreamEvent,
   AiStartChatInput,
@@ -9,8 +13,14 @@ import type {
   BackupExportInput,
   BackupImportInput,
   BridgeApi,
+  CommandImportInput,
+  CommandImportResult,
+  CommandMoveInput,
+  CommandReorderInput,
   CommandSaveInput,
   CommandTabSaveInput,
+  CredentialImportInput,
+  CredentialImportResult,
   CredentialSaveInput,
   HttpBatchExecuteInput,
   HttpClearHistoryInput,
@@ -20,7 +30,16 @@ import type {
   HttpRequestSaveInput,
   LegacyImportInput,
   NodeSaveInput,
+  NodeConversionResult,
+  NodeSubscriptionFetchResult,
+  NodeValidationResult,
+  PromptExportDocument,
+  PromptExportInput,
+  PromptImportInput,
+  PromptImportResult,
   PromptCategorySaveInput,
+  PromptSaveAsTemplateInput,
+  PromptTemplateReorderInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput
 } from '../shared/ipc-contract'
@@ -31,6 +50,8 @@ import type {
  */
 const api: BridgeApi = {
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:get-info'),
+  applyAppearance: (appearance: AppAppearance) =>
+    ipcRenderer.invoke('appearance:apply', appearance),
   getAiChatHistoryState: (): Promise<AiChatHistoryState> =>
     ipcRenderer.invoke('ai:get-history-state'),
   getAiChatSession: (sessionId: string): Promise<AiChatSessionRecord | null> =>
@@ -38,6 +59,14 @@ const api: BridgeApi = {
   getAiSettingsState: (): Promise<AiSettingsState> => ipcRenderer.invoke('ai:get-settings-state'),
   saveAiSettings: (input: AiSettingsSaveInput): Promise<AiSettingsState> =>
     ipcRenderer.invoke('ai:save-settings', input),
+  getAiSdkRuntimeState: (): Promise<AiSdkRuntimeState> =>
+    ipcRenderer.invoke('ai-sdk-runtime:get-state'),
+  installAiSdkRuntime: (provider: AiProviderKind): Promise<AiSdkRuntimeOperationResult> =>
+    ipcRenderer.invoke('ai-sdk-runtime:install', provider),
+  updateAiSdkRuntime: (provider: AiProviderKind): Promise<AiSdkRuntimeOperationResult> =>
+    ipcRenderer.invoke('ai-sdk-runtime:update', provider),
+  uninstallAiSdkRuntime: (provider: AiProviderKind): Promise<AiSdkRuntimeOperationResult> =>
+    ipcRenderer.invoke('ai-sdk-runtime:uninstall', provider),
   aiStartChat: (input: AiStartChatInput) => ipcRenderer.invoke('ai:start-chat', input),
   aiCancelChat: (sessionId: string) => ipcRenderer.invoke('ai:cancel-chat', sessionId),
   onAiStreamEvent: (handler: (event: AiStreamEvent) => void) => {
@@ -51,14 +80,29 @@ const api: BridgeApi = {
   getCommandsState: () => ipcRenderer.invoke('commands:get-state'),
   saveCommandTab: (input: CommandTabSaveInput) => ipcRenderer.invoke('commands:save-tab', input),
   saveCommand: (input: CommandSaveInput) => ipcRenderer.invoke('commands:save-command', input),
+  importCommands: (input: CommandImportInput): Promise<CommandImportResult> =>
+    ipcRenderer.invoke('commands:import', input),
+  reorderCommandTabs: (tabIds: string[]) => ipcRenderer.invoke('commands:reorder-tabs', tabIds),
+  moveCommandToTab: (input: CommandMoveInput) => ipcRenderer.invoke('commands:move', input),
+  reorderCommands: (input: CommandReorderInput) => ipcRenderer.invoke('commands:reorder', input),
   deleteCommand: (commandId: string) => ipcRenderer.invoke('commands:delete-command', commandId),
   getCredentialsState: () => ipcRenderer.invoke('credentials:get-state'),
   saveCredential: (input: CredentialSaveInput) => ipcRenderer.invoke('credentials:save', input),
+  importCredentials: (input: CredentialImportInput): Promise<CredentialImportResult> =>
+    ipcRenderer.invoke('credentials:import', input),
+  reorderCredentials: (credentialIds: string[]) =>
+    ipcRenderer.invoke('credentials:reorder', credentialIds),
   deleteCredential: (credentialId: string) =>
     ipcRenderer.invoke('credentials:delete', credentialId),
   getNodesState: () => ipcRenderer.invoke('nodes:get-state'),
   saveNode: (input: NodeSaveInput) => ipcRenderer.invoke('nodes:save', input),
   deleteNode: (nodeId: string) => ipcRenderer.invoke('nodes:delete', nodeId),
+  convertNodeText: (input: string): Promise<NodeConversionResult> =>
+    ipcRenderer.invoke('nodes:convert-text', input),
+  fetchNodeSubscription: (input: string): Promise<NodeSubscriptionFetchResult> =>
+    ipcRenderer.invoke('nodes:fetch-subscription', input),
+  validateConvertedNodes: (input: string): Promise<NodeValidationResult[]> =>
+    ipcRenderer.invoke('nodes:validate-converted', input),
   getHttpCollectionsState: () => ipcRenderer.invoke('http-collections:get-state'),
   saveHttpCollection: (input: HttpCollectionSaveInput) =>
     ipcRenderer.invoke('http-collections:save-collection', input),
@@ -79,10 +123,16 @@ const api: BridgeApi = {
   getPromptState: () => ipcRenderer.invoke('prompts:get-state'),
   savePromptCategory: (input: PromptCategorySaveInput) =>
     ipcRenderer.invoke('prompts:save-category', input),
+  reorderPromptCategories: (categoryIds: string[]) =>
+    ipcRenderer.invoke('prompts:reorder-categories', categoryIds),
   deletePromptCategory: (categoryId: string) =>
     ipcRenderer.invoke('prompts:delete-category', categoryId),
   savePromptTemplate: (input: PromptTemplateSaveInput) =>
     ipcRenderer.invoke('prompts:save-template', input),
+  savePromptAsTemplate: (input: PromptSaveAsTemplateInput) =>
+    ipcRenderer.invoke('prompts:save-as-template', input),
+  reorderPromptTemplates: (input: PromptTemplateReorderInput) =>
+    ipcRenderer.invoke('prompts:reorder-templates', input),
   deletePromptTemplate: (templateId: string) =>
     ipcRenderer.invoke('prompts:delete-template', templateId),
   togglePromptFavorite: (templateId: string) =>
@@ -90,6 +140,10 @@ const api: BridgeApi = {
   usePromptTemplate: (input: PromptTemplateUseInput) =>
     ipcRenderer.invoke('prompts:use-template', input),
   parsePromptVariables: (content: string) => ipcRenderer.invoke('prompts:parse-variables', content),
+  exportPromptTemplates: (input?: PromptExportInput): Promise<PromptExportDocument> =>
+    ipcRenderer.invoke('prompts:export', input),
+  importPromptTemplates: (input: PromptImportInput): Promise<PromptImportResult> =>
+    ipcRenderer.invoke('prompts:import', input),
   exportBackup: (input?: BackupExportInput) => ipcRenderer.invoke('backup:export', input),
   importBackup: (input: BackupImportInput) => ipcRenderer.invoke('backup:import', input),
   analyzeLegacyImport: (json: string) => ipcRenderer.invoke('legacy:analyze-import', json),

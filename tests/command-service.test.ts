@@ -85,4 +85,29 @@ describe('CommandService', () => {
     expect(deleteResult.ok).toBe(true)
     expect(state.commands.map((command) => command.title)).toEqual(['查看镜像'])
   })
+
+  it('imports command blocks and supports tab and command reordering', async () => {
+    const { service } = await createService()
+
+    const gitTab = await service.saveTab({ name: 'Git' })
+    const dockerTab = await service.saveTab({ name: 'Docker' })
+    const imported = await service.importCommands({
+      text: 'Git 常用:\n# 查看当前状态\ngit status\n\ngit log:\ngit log --oneline -10',
+      tabId: gitTab.id
+    })
+    await service.reorderTabs([dockerTab.id, gitTab.id, 'default'])
+    const importedState = await service.getState()
+    const gitCommands = importedState.commands.filter((item) => item.tabId === gitTab.id)
+    await service.reorderCommands({
+      tabId: gitTab.id,
+      commandIds: [...gitCommands].reverse().map((item) => item.id)
+    })
+    const state = await service.getState()
+
+    expect(imported.imported).toBe(2)
+    expect(state.tabs[0].id).toBe(dockerTab.id)
+    expect(
+      state.commands.filter((item) => item.tabId === gitTab.id).map((item) => item.title)
+    ).toEqual(['git log', 'Git 常用'])
+  })
 })

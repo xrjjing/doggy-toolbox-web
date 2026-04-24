@@ -95,4 +95,19 @@ describe('CredentialService', () => {
     expect(deleteResult.ok).toBe(true)
     expect(state.credentials).toEqual([])
   })
+
+  it('imports legacy text credentials and supports reordering', async () => {
+    const { service } = await createService()
+
+    const imported = await service.importCredentials({
+      text: 'GitHub https://github.com || doggy || token || 2FA enabled\n\nJenkins\n账号：admin\n密码：secret'
+    })
+    let state = await service.getState()
+    await service.reorderCredentials([...state.credentials].reverse().map((item) => item.id))
+    state = await service.getState()
+
+    expect(imported.imported).toBe(2)
+    expect(state.credentials.map((item) => item.service)).toEqual(['Jenkins', 'GitHub'])
+    expect(state.credentials[1].extra).toEqual(['2FA enabled'])
+  })
 })

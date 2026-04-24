@@ -1,8 +1,12 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type {
+  CommandImportInput,
+  CommandImportResult,
   CommandModuleState,
+  CommandMoveInput,
   CommandRecord,
+  CommandReorderInput,
   CommandSaveInput,
   CommandTab,
   CommandTabSaveInput
@@ -131,6 +135,53 @@ export const useCommandsStore = defineStore('commands', () => {
     }
   }
 
+  async function importCommands(input: CommandImportInput): Promise<CommandImportResult> {
+    saving.value = true
+    try {
+      const result = await window.doggy.importCommands(input)
+      await load()
+      if (input.tabId) {
+        activeTabId.value = input.tabId
+      }
+      return result
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function moveCommand(input: CommandMoveInput): Promise<CommandRecord> {
+    saving.value = true
+    try {
+      const result = await window.doggy.moveCommandToTab(input)
+      await load()
+      activeTabId.value = result.tabId
+      return result
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function reorderTabs(tabIds: string[]): Promise<void> {
+    saving.value = true
+    try {
+      await window.doggy.reorderCommandTabs(tabIds)
+      await load()
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function reorderCommands(input: CommandReorderInput): Promise<void> {
+    saving.value = true
+    try {
+      await window.doggy.reorderCommands(input)
+      await load()
+      activeTabId.value = input.tabId
+    } finally {
+      saving.value = false
+    }
+  }
+
   function setActiveTab(tabId: string): void {
     activeTabId.value = tabId
   }
@@ -164,6 +215,10 @@ export const useCommandsStore = defineStore('commands', () => {
     load,
     saveTab,
     saveCommand,
+    importCommands,
+    moveCommand,
+    reorderTabs,
+    reorderCommands,
     removeCommand,
     setActiveTab,
     setSearch,

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  CredentialImportInput,
+  CredentialImportResult,
   CredentialModuleState,
   CredentialRecord,
   CredentialSaveInput
@@ -56,6 +58,112 @@ function sanitizeText(value: string | undefined): string {
 
 function sanitizeLines(lines: string[] | undefined): string[] {
   return (lines ?? []).map((line) => line.replace(/\r/g, '').trim()).filter(Boolean)
+}
+
+function splitBlocks(text: string): string[][] {
+  const blocks: string[][] = []
+  let buffer: string[] = []
+
+  for (const rawLine of String(text ?? '').split('\n')) {
+    const line = rawLine.replace(/\r/g, '').trimEnd()
+    if (!line.trim()) {
+      if (buffer.length > 0) {
+        blocks.push(buffer)
+        buffer = []
+      }
+      continue
+    }
+    buffer.push(line)
+  }
+
+  if (buffer.length > 0) {
+    blocks.push(buffer)
+  }
+
+  return blocks
+}
+
+function parseCredentialBlock(
+  lines: string[]
+): Omit<CredentialRecord, 'id' | 'order' | 'createdAt' | 'updatedAt'> | null {
+  if (lines.length === 0) {
+    return null
+  }
+
+  const merged = lines.join(' ')
+  if (merged.includes('||')) {
+    const parts = merged.split('||').map((part) => part.trim())
+    const serviceUrl = parts[0] ?? ''
+    const urlMatch = serviceUrl.match(/https?:\/\/\S+/)
+    const url = urlMatch?.[0] ?? ''
+    const service = sanitizeText(serviceUrl.replace(url, '')) || sanitizeText(serviceUrl)
+
+    if (!service) {
+      return null
+    }
+
+    return {
+      service: service.replace(/[.\s]+$/g, ''),
+      url,
+      account: sanitizeText(parts[1]),
+      password: sanitizeText(parts[2]),
+      extra: parts
+        .slice(3)
+        .map((part) => sanitizeText(part))
+        .filter(Boolean)
+    }
+  }
+
+  let service = sanitizeText(lines[0].replace(/[：:]\s*$/, ''))
+  let url = ''
+  let account = ''
+  let password = ''
+  const extra: string[] = []
+
+  const firstUrlMatch = service.match(/https?:\/\/\S+/)
+  if (firstUrlMatch?.[0]) {
+    url = firstUrlMatch[0]
+    service = sanitizeText(service.replace(url, ''))
+  }
+
+  for (const rawLine of lines.slice(1)) {
+    const line = sanitizeText(rawLine)
+    if (!line) continue
+
+    const accountMatch = line.match(/^(账号|loginname|username|用户名?)[:：]\s*(.+)$/i)
+    if (accountMatch) {
+      account = sanitizeText(accountMatch[2])
+      continue
+    }
+
+    const passwordMatch = line.match(/^(密码|password|pwd)[:：]\s*(.+)$/i)
+    if (passwordMatch) {
+      password = sanitizeText(passwordMatch[2])
+      continue
+    }
+
+    const urlMatch = line.match(/https?:\/\/\S+/)
+    if (urlMatch?.[0] && !url) {
+      url = urlMatch[0]
+      continue
+    }
+
+    if (!account) {
+      account = line
+      continue
+    }
+    if (!password) {
+      password = line
+      continue
+    }
+    extra.push(line)
+  }
+
+  if (!service) {
+    return null
+  }
+
+  return { service, url, account, password, extra }
 }
 
 function sortCredentials(credentials: CredentialRecord[]): CredentialRecord[] {
@@ -154,6 +262,101 @@ export class CredentialService {
     }
 
     return savedCredential
+  }
+
+  async importCredentials(input: CredentialImportInput): Promise<CredentialImportResult> {
+    const parsedCredentials = splitBlocks(input.text)
+      .map((block) => parseCredentialBlock(block))
+      .filter(
+        (
+          credential
+        ): credential is Omit<CredentialRecord, 'id' | 'order' | 'createdAt' | 'updatedAt'> =>
+          Boolean(credential)
+      )
+
+    if (parsedCredentials.length === 0) {
+      return { imported: 0, credentials: [] }
+    }
+
+    const timestamp = nowIso()
+    let importedCredentials: CredentialImportResult['credentials'] = []
+
+    await this.updateState((state) => {
+      const credentials = this.toPlainRecords(state)
+      importedCredentials = parsedCredentials.map((credential) => {
+        const record: CredentialRecord = {
+          id: randomUUID(),
+          service: credential.service,
+          url: credential.url,
+          account: credential.account,
+          password: credential.password,
+          extra: credential.extra,
+          order: credentials.reduce((maxOrder, item) => Math.max(maxOrder, item.order), -1) + 1,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+        credentials.push(record)
+        return {
+          service: record.service,
+          url: record.url,
+          account: record.account,
+          password: record.password,
+          extra: record.extra
+        }
+      })
+
+      return this.fromPlainRecords({
+        version: 1,
+        updatedAt: timestamp,
+        secretEncoding: this.secretCodec.encoding,
+        credentials: sortCredentials(credentials)
+      })
+    })
+
+    return {
+      imported: importedCredentials.length,
+      credentials: importedCredentials
+    }
+  }
+
+  async reorderCredentials(credentialIds: string[]): Promise<{ ok: boolean }> {
+    const normalizedIds = Array.from(
+      new Set((credentialIds ?? []).map((id) => sanitizeText(id)).filter(Boolean))
+    )
+
+    await this.updateState((state) => {
+      const credentials = this.toPlainRecords(state)
+      const credentialMap = new Map(credentials.map((credential) => [credential.id, credential]))
+      let nextOrder = 0
+
+      for (const credentialId of normalizedIds) {
+        const credential = credentialMap.get(credentialId)
+        if (!credential) continue
+        credentialMap.set(credentialId, {
+          ...credential,
+          order: nextOrder++,
+          updatedAt: nowIso()
+        })
+      }
+
+      for (const credential of sortCredentials(credentials)) {
+        if (normalizedIds.includes(credential.id)) continue
+        credentialMap.set(credential.id, {
+          ...credential,
+          order: nextOrder++,
+          updatedAt: nowIso()
+        })
+      }
+
+      return this.fromPlainRecords({
+        version: 1,
+        updatedAt: nowIso(),
+        secretEncoding: this.secretCodec.encoding,
+        credentials: sortCredentials([...credentialMap.values()])
+      })
+    })
+
+    return { ok: true }
   }
 
   async deleteCredential(credentialId: string): Promise<{ ok: boolean }> {

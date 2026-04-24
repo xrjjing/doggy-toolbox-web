@@ -10,24 +10,52 @@ const runtimeCards = computed(
     [
       {
         title: 'Codex 本机链路',
-        status: appStore.runtimeInfo?.codex.available ? '可检测' : '未检测',
+        status: appStore.runtimeInfo?.codex.available
+          ? '真实可用'
+          : appStore.runtimeInfo?.codex.configDetected
+            ? '配置已找到'
+            : '未配置',
         detail: appStore.runtimeInfo?.codex.details ?? '等待检测',
-        type: appStore.runtimeInfo?.codex.available ? 'success' : 'warning',
-        facts: appStore.runtimeInfo?.codex.facts ?? []
+        type: appStore.runtimeInfo?.codex.available
+          ? 'success'
+          : appStore.runtimeInfo?.codex.configDetected
+            ? 'warning'
+            : 'default',
+        facts: appStore.runtimeInfo?.codex.facts ?? [],
+        probe: appStore.runtimeInfo?.codex.probe.message ?? '等待检测',
+        extra: [
+          `配置文件：${appStore.runtimeInfo?.codex.configDetected ? '已检测' : '未检测'}`,
+          `AI runtime：${appStore.runtimeInfo?.codex.runtimeInstalled ? '已安装' : '未安装'}`
+        ]
       },
       {
         title: 'Claude Code 本机链路',
-        status: appStore.runtimeInfo?.claude.available ? '可检测' : '未检测',
+        status: appStore.runtimeInfo?.claude.available
+          ? '真实可用'
+          : appStore.runtimeInfo?.claude.configDetected
+            ? '配置已找到'
+            : '未配置',
         detail: appStore.runtimeInfo?.claude.details ?? '等待检测',
-        type: appStore.runtimeInfo?.claude.available ? 'success' : 'warning',
-        facts: appStore.runtimeInfo?.claude.facts ?? []
+        type: appStore.runtimeInfo?.claude.available
+          ? 'success'
+          : appStore.runtimeInfo?.claude.configDetected
+            ? 'warning'
+            : 'default',
+        facts: appStore.runtimeInfo?.claude.facts ?? [],
+        probe: appStore.runtimeInfo?.claude.probe.message ?? '等待检测',
+        extra: [
+          `配置文件：${appStore.runtimeInfo?.claude.configDetected ? '已检测' : '未检测'}`,
+          `AI runtime：${appStore.runtimeInfo?.claude.runtimeInstalled ? '已安装' : '未安装'}`
+        ]
       },
       {
         title: '数据目录',
         status: 'Electron appData',
         detail: appStore.runtimeInfo?.dataDir ?? '等待检测',
         type: 'info',
-        facts: []
+        facts: [],
+        probe: '',
+        extra: []
       }
     ] as const
 )
@@ -72,6 +100,12 @@ const migrationGroups = [
         <template #header>{{ card.title }}</template>
         <NTag :type="card.type" :bordered="false">{{ card.status }}</NTag>
         <p class="muted">{{ card.detail }}</p>
+        <p v-if="card.probe" class="muted">{{ card.probe }}</p>
+        <div v-if="card.extra.length > 0" class="chip-list">
+          <span v-for="line in card.extra" :key="`${card.title}-${line}`" class="chip">
+            {{ line }}
+          </span>
+        </div>
         <div v-if="card.facts.length > 0" class="chip-list">
           <span v-for="fact in card.facts" :key="`${card.title}-${fact.label}`" class="chip">
             {{ fact.label }}={{ fact.value }}

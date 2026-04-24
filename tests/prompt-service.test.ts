@@ -70,4 +70,52 @@ describe('PromptService', () => {
     expect(updatedTemplate?.usageCount).toBe(1)
     expect(updatedTemplate?.isFavorite).toBe(true)
   })
+
+  it('exports, imports and reorders prompt templates', async () => {
+    const { service } = await createService()
+    const category = await service.saveCategory({ name: '排障', icon: 'DBG' })
+    const first = await service.saveTemplate({
+      title: '日志分析',
+      content: '请分析 {{log}}',
+      categoryId: category.id
+    })
+    await service.saveAsTemplate({
+      content: '请总结 {{content}}',
+      title: '总结模板',
+      categoryId: category.id
+    })
+    await service.reorderCategories([category.id, 'cat_coding'])
+    await service.reorderTemplates({
+      categoryId: category.id,
+      templateIds: (await service.getState()).templates
+        .filter((item) => item.categoryId === category.id)
+        .reverse()
+        .map((item) => item.id)
+    })
+
+    const exported = await service.exportTemplates({
+      templateIds: [first.id],
+      includeCategories: true
+    })
+    const imported = await service.importTemplates({
+      json: JSON.stringify({
+        ...exported,
+        templates: [
+          {
+            title: '运行复盘',
+            content: '请复盘 {{topic}}',
+            description: '导入模板',
+            tags: ['review'],
+            category_id: category.id
+          }
+        ]
+      })
+    })
+    const state = await service.getState()
+
+    expect(exported.templates).toHaveLength(1)
+    expect(imported.imported).toBe(1)
+    expect(state.categories[0].id).toBe(category.id)
+    expect(state.templates.some((item) => item.title === '运行复盘')).toBe(true)
+  })
 })

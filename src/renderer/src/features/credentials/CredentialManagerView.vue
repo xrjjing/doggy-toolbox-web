@@ -10,6 +10,8 @@ import {
   NModal,
   NPopconfirm,
   NSpace,
+  NTimeline,
+  NTimelineItem,
   NTag,
   NText,
   useMessage
@@ -42,6 +44,8 @@ type CredentialFormState = {
 const message = useMessage()
 const credentialsStore = useCredentialsStore()
 const modalVisible = ref(false)
+const importModalVisible = ref(false)
+const importText = ref('')
 // 仅控制当前页面“是否展示明文密码”，不会写回 store，也不会修改持久化记录。
 const revealedIds = ref(new Set<string>())
 // 表单保持字符串态，提交时再映射为 CredentialSaveInput，便于与输入框交互保持一致。
@@ -147,6 +151,28 @@ async function submitCredential(): Promise<void> {
   }
 }
 
+function rotateCredentialOrder(direction: 'up' | 'down', credentialId: string): void {
+  const credentials = [...credentialsStore.credentials]
+  const currentIndex = credentials.findIndex((item) => item.id === credentialId)
+  if (currentIndex < 0) return
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= credentials.length) return
+  const [current] = credentials.splice(currentIndex, 1)
+  credentials.splice(targetIndex, 0, current)
+  void credentialsStore.reorderCredentials(credentials.map((item) => item.id))
+}
+
+async function submitImportCredentials(): Promise<void> {
+  try {
+    const result = await credentialsStore.importCredentials({ text: importText.value })
+    importModalVisible.value = false
+    importText.value = ''
+    message.success(`已导入 ${result.imported} 条凭证`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 // 删除只传 credential id；删除结果与最新快照由 store 负责重新拉取。
 async function deleteCredential(credentialId: string): Promise<void> {
   try {
@@ -201,6 +227,13 @@ onMounted(() => {
       </div>
       <p>Electron 环境优先使用 safeStorage；不可用时降级为本机 JSON 明文。</p>
     </article>
+    <article class="progress-card">
+      <div class="progress-head">
+        <strong>迁移补齐</strong>
+        <span>旧体验</span>
+      </div>
+      <p>已补回批量文本导入、顺序调整和更清晰的附加信息时间线展示。</p>
+    </article>
   </section>
 
   <div class="credentials-shell">
@@ -217,6 +250,7 @@ onMounted(() => {
           <NButton secondary :loading="credentialsStore.loading" @click="credentialsStore.load">
             刷新
           </NButton>
+          <NButton secondary @click="importModalVisible = true">批量导入</NButton>
           <NButton type="primary" @click="openCreateModal">新增凭证</NButton>
         </NSpace>
       </div>
@@ -256,7 +290,11 @@ onMounted(() => {
         </div>
 
         <div v-if="credential.extra.length > 0" class="chip-list credential-extra">
-          <span v-for="line in credential.extra" :key="line" class="chip">{{ line }}</span>
+          <NTimeline size="medium">
+            <NTimelineItem v-for="line in credential.extra" :key="line" type="info">
+              {{ line }}
+            </NTimelineItem>
+          </NTimeline>
         </div>
 
         <div class="action-row">
@@ -266,6 +304,25 @@ onMounted(() => {
           <NButton size="small" secondary @click="copyText(credential.password, '密码')"
             >复制密码</NButton
           >
+          <NButton
+            size="small"
+            quaternary
+            :disabled="credentialsStore.credentials[0]?.id === credential.id"
+            @click="rotateCredentialOrder('up', credential.id)"
+          >
+            上移
+          </NButton>
+          <NButton
+            size="small"
+            quaternary
+            :disabled="
+              credentialsStore.credentials[credentialsStore.credentials.length - 1]?.id ===
+              credential.id
+            "
+            @click="rotateCredentialOrder('down', credential.id)"
+          >
+            下移
+          </NButton>
           <NButton size="small" secondary @click="toggleReveal(credential.id)">
             {{ isRevealed(credential.id) ? '隐藏' : '显示' }}
           </NButton>
@@ -338,5 +395,26 @@ onMounted(() => {
         </NButton>
       </div>
     </NForm>
+  </NModal>
+
+  <NModal
+    v-model:show="importModalVisible"
+    preset="card"
+    title="批量导入凭证"
+    class="form-modal command-form-modal"
+  >
+    <p class="muted">兼容旧项目两种文本格式：`服务 URL || 账号 || 密码 || 备注`，或多行块格式。</p>
+    <NInput
+      v-model:value="importText"
+      type="textarea"
+      :autosize="{ minRows: 10, maxRows: 18 }"
+      placeholder="GitHub https://github.com || doggy || token || 2FA enabled\n\nJenkins\n账号：admin\n密码：secret"
+    />
+    <div class="action-row modal-actions">
+      <NButton secondary @click="importModalVisible = false">取消</NButton>
+      <NButton type="primary" :loading="credentialsStore.saving" @click="submitImportCredentials">
+        开始导入
+      </NButton>
+    </div>
   </NModal>
 </template>

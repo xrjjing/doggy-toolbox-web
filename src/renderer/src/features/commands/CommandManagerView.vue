@@ -9,6 +9,7 @@ import {
   NInput,
   NModal,
   NPopconfirm,
+  NSelect,
   NSpace,
   NTag,
   NText,
@@ -47,6 +48,8 @@ const aiSettingsStore = useAiSettingsStore()
 const commandsStore = useCommandsStore()
 const tabModalVisible = ref(false)
 const commandModalVisible = ref(false)
+const importModalVisible = ref(false)
+const importText = ref('')
 // 分组弹窗只维护最小状态：当前编辑对象 id 和名称。
 const tabForm = reactive({
   id: '',
@@ -79,6 +82,7 @@ const tabOptions = computed(() =>
   }))
 )
 const isCommandEdit = computed(() => Boolean(commandForm.id))
+const moveTargetByCommandId = ref<Record<string, string>>({})
 
 function formatUpdatedAt(value: string): string {
   if (!value) return '等待首次保存'
@@ -150,6 +154,31 @@ async function explainCommandsWithAi(): Promise<void> {
   }
 }
 
+function rotateTabOrder(direction: 'left' | 'right', currentTabId: string): void {
+  const tabs = [...commandsStore.tabs]
+  const currentIndex = tabs.findIndex((tab) => tab.id === currentTabId)
+  if (currentIndex < 0) return
+  const targetIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= tabs.length) return
+  const [current] = tabs.splice(currentIndex, 1)
+  tabs.splice(targetIndex, 0, current)
+  void commandsStore.reorderTabs(tabs.map((tab) => tab.id))
+}
+
+function rotateCommandOrder(direction: 'up' | 'down', command: CommandRecord): void {
+  const commands = commandsStore.commands.filter((item) => item.tabId === command.tabId)
+  const currentIndex = commands.findIndex((item) => item.id === command.id)
+  if (currentIndex < 0) return
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= commands.length) return
+  const [current] = commands.splice(currentIndex, 1)
+  commands.splice(targetIndex, 0, current)
+  void commandsStore.reorderCommands({
+    tabId: command.tabId,
+    commandIds: commands.map((item) => item.id)
+  })
+}
+
 // 新建分组前显式清空旧表单，避免编辑态残留串入新增流程。
 function openCreateTabModal(): void {
   tabForm.id = ''
@@ -217,6 +246,37 @@ async function submitCommand(): Promise<void> {
   }
 }
 
+async function submitImportCommands(): Promise<void> {
+  try {
+    const result = await commandsStore.importCommands({
+      text: importText.value,
+      tabId: commandsStore.activeTabId || commandsStore.defaultTabId
+    })
+    importModalVisible.value = false
+    importText.value = ''
+    message.success(`已导入 ${result.imported} 条命令`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function moveCommand(command: CommandRecord): Promise<void> {
+  const targetTabId = moveTargetByCommandId.value[command.id] || command.tabId
+  if (targetTabId === command.tabId) {
+    message.warning('请选择其他分组')
+    return
+  }
+  try {
+    await commandsStore.moveCommand({
+      commandId: command.id,
+      targetTabId
+    })
+    message.success('命令已移动到目标分组')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 // 删除入口只负责传递命令 id；删除是否成功和刷新后的最新状态由 store/service 返回。
 async function deleteCommand(commandId: string): Promise<void> {
   try {
@@ -274,6 +334,13 @@ onMounted(() => {
       </div>
       <p>当前分组：{{ tabSummary }}。支持按标题、描述、标签和命令内容本地搜索。</p>
     </article>
+    <article class="progress-card">
+      <div class="progress-head">
+        <strong>迁移补齐</strong>
+        <span>旧体验</span>
+      </div>
+      <p>已补回批量文本导入、分组顺序调整、命令顺序调整和跨分组移动入口。</p>
+    </article>
   </section>
 
   <div class="commands-shell">
@@ -299,7 +366,27 @@ onMounted(() => {
             <strong>{{ tab.name }}</strong>
             <p>{{ tab.count }} 条命令</p>
           </div>
-          <NTag size="small" :bordered="false">{{ tab.count }}</NTag>
+          <div class="list-order-actions">
+            <NButton
+              size="tiny"
+              quaternary
+              circle
+              :disabled="commandsStore.tabs[0]?.id === tab.id"
+              @click.stop="rotateTabOrder('left', tab.id)"
+            >
+              ↑
+            </NButton>
+            <NButton
+              size="tiny"
+              quaternary
+              circle
+              :disabled="commandsStore.tabs[commandsStore.tabs.length - 1]?.id === tab.id"
+              @click.stop="rotateTabOrder('right', tab.id)"
+            >
+              ↓
+            </NButton>
+            <NTag size="small" :bordered="false">{{ tab.count }}</NTag>
+          </div>
         </button>
       </div>
 
@@ -325,6 +412,7 @@ onMounted(() => {
             <NButton secondary :loading="commandsStore.loading" @click="commandsStore.load"
               >刷新</NButton
             >
+            <NButton secondary @click="importModalVisible = true">批量导入</NButton>
             <NButton
               secondary
               :disabled="!aiSettingsStore.isFeatureEnabled('commands')"
@@ -371,6 +459,29 @@ onMounted(() => {
 
           <div class="action-row">
             <NButton size="small" secondary @click="copyCommand(command)">复制</NButton>
+            <NButton
+              size="small"
+              quaternary
+              :disabled="
+                commandsStore.commands.filter((item) => item.tabId === command.tabId)[0]?.id ===
+                command.id
+              "
+              @click="rotateCommandOrder('up', command)"
+            >
+              上移
+            </NButton>
+            <NButton
+              size="small"
+              quaternary
+              :disabled="
+                commandsStore.commands.filter((item) => item.tabId === command.tabId)[
+                  commandsStore.commands.filter((item) => item.tabId === command.tabId).length - 1
+                ]?.id === command.id
+              "
+              @click="rotateCommandOrder('down', command)"
+            >
+              下移
+            </NButton>
             <NButton size="small" secondary @click="openEditCommandModal(command)">编辑</NButton>
             <NPopconfirm @positive-click="deleteCommand(command.id)">
               <template #trigger>
@@ -378,6 +489,20 @@ onMounted(() => {
               </template>
               删除这条命令卡片后不会自动进入备份，确定继续？
             </NPopconfirm>
+          </div>
+
+          <div class="command-move-row">
+            <NSelect
+              :value="moveTargetByCommandId[command.id] || command.tabId"
+              size="small"
+              :options="tabOptions.map((tab) => ({ label: tab.name, value: tab.id }))"
+              @update:value="
+                (value) => {
+                  moveTargetByCommandId[command.id] = String(value)
+                }
+              "
+            />
+            <NButton size="small" secondary @click="moveCommand(command)">移动到分组</NButton>
           </div>
         </NCard>
       </div>
@@ -461,5 +586,28 @@ onMounted(() => {
         </NButton>
       </div>
     </NForm>
+  </NModal>
+
+  <NModal
+    v-model:show="importModalVisible"
+    preset="card"
+    title="批量导入命令"
+    class="form-modal command-form-modal"
+  >
+    <p class="muted">
+      兼容旧项目纯文本格式：标题行以 `:` 或 `：` 结尾；`#` 注释会作为说明；命令正文按行保存。
+    </p>
+    <NInput
+      v-model:value="importText"
+      type="textarea"
+      :autosize="{ minRows: 10, maxRows: 18 }"
+      placeholder="Git 常用:\n# 查看当前分支状态\ngit status\n\nDocker:\ndocker ps"
+    />
+    <div class="action-row modal-actions">
+      <NButton secondary @click="importModalVisible = false">取消</NButton>
+      <NButton type="primary" :loading="commandsStore.saving" @click="submitImportCommands">
+        导入到当前分组
+      </NButton>
+    </div>
   </NModal>
 </template>

@@ -1,22 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { NButton, NCard, NCheckbox, NInput, NSpace, NTag, useMessage } from 'naive-ui'
-import type { AiFeatureModuleId } from '@shared/ipc-contract'
+import type { AiFeatureModuleId, AiProviderKind, AiSdkRuntimeState } from '@shared/ipc-contract'
 import { useAiStore } from '@renderer/stores/ai'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
 import { useAppStore } from '@renderer/stores/app'
 
 /**
  * 旧项目的 ai-settings 里，一半是 Provider CRUD，一半是工具 AI 开关。
- * 新仓已经改为“只走本机 Codex / Claude SDK”，所以这里不再做 HTTPS Provider 管理，
- * 而是保留真正还对用户有价值的两类控制：
- * 1. 本机 SDK 运行时事实查看。
- * 2. 工具级 AI 开关与默认工作目录/提示词配置。
+ * 新仓现在进一步收口成两部分：
+ * 1. AI 模块开关与默认提示词。
+ * 2. Codex / Claude SDK runtime 的按需安装、更新、卸载。
  */
 const message = useMessage()
 const aiStore = useAiStore()
 const aiSettingsStore = useAiSettingsStore()
 const appStore = useAppStore()
+const sdkRuntimeState = ref<AiSdkRuntimeState | null>(null)
+const runtimeBusyMap = ref<Record<AiProviderKind, boolean>>({
+  codex: false,
+  'claude-code': false
+})
 
 type FeatureGroup = {
   key: 'tooling' | 'workspace' | 'network'
@@ -67,6 +71,12 @@ const groupedTools = computed(() => {
 
 const codexFacts = computed(() => appStore.runtimeInfo?.codex.facts ?? [])
 const claudeFacts = computed(() => appStore.runtimeInfo?.claude.facts ?? [])
+const codexStatus = computed(() => appStore.runtimeInfo?.codex ?? null)
+const claudeStatus = computed(() => appStore.runtimeInfo?.claude ?? null)
+const sdkRuntimes = computed(() => {
+  const state = sdkRuntimeState.value
+  return state ? [state.runtimes.codex, state.runtimes['claude-code']] : []
+})
 
 function toggleAllTools(value: boolean): void {
   aiSettingsStore.setDraft('globalEnabled', value)
@@ -77,14 +87,50 @@ function toggleAllTools(value: boolean): void {
     })
 }
 
+function formatBytes(value?: number): string {
+  if (!value) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = value
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
 async function saveSettings(): Promise<void> {
   try {
     await aiSettingsStore.save()
-    message.success(
-      'AI 设置已保存到本地资料库。新仓仍坚持本机 SDK 路线，不创建额外 HTTPS Provider。'
-    )
+    message.success('AI 设置已保存到本地资料库。')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function loadSdkRuntimeState(): Promise<void> {
+  sdkRuntimeState.value = await window.doggy.getAiSdkRuntimeState()
+}
+
+async function runRuntimeOperation(
+  provider: AiProviderKind,
+  action: 'install' | 'update' | 'uninstall'
+): Promise<void> {
+  runtimeBusyMap.value[provider] = true
+  try {
+    const result =
+      action === 'install'
+        ? await window.doggy.installAiSdkRuntime(provider)
+        : action === 'update'
+          ? await window.doggy.updateAiSdkRuntime(provider)
+          : await window.doggy.uninstallAiSdkRuntime(provider)
+    await loadSdkRuntimeState()
+    const actionLabel = action === 'install' ? '安装' : action === 'update' ? '更新' : '卸载'
+    message.success(`${result.status.label}${actionLabel}完成`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    runtimeBusyMap.value[provider] = false
   }
 }
 
@@ -110,6 +156,7 @@ onMounted(async () => {
   } else {
     aiSettingsStore.applyLoadedSettings()
   }
+  await loadSdkRuntimeState()
 })
 </script>
 
@@ -122,14 +169,73 @@ onMounted(async () => {
             <p class="eyebrow">local sdk settings</p>
             <h3>AI 设置</h3>
           </div>
-          <NTag size="small" :bordered="false">SDK Only</NTag>
+          <NTag size="small" :bordered="false">SDK On Demand</NTag>
         </div>
       </template>
 
       <p class="muted">
-        新仓不再维护旧项目那套第三方 HTTPS Provider 列表，这里只保留本机 Codex / Claude SDK
-        的真实可用配置和模块级开关，并把默认配置持久化到本地资料库。
+        新仓默认不把 Codex / Claude SDK 打进基础安装包。GitHub
+        用户下载桌面端后，只有在这里点击安装， 才会把对应 provider 的 runtime 放到本机用户数据目录。
       </p>
+
+      <section class="ai-settings-section">
+        <div class="card-title-row">
+          <span>AI SDK Runtime</span>
+          <NButton tertiary size="small" @click="loadSdkRuntimeState">刷新状态</NButton>
+        </div>
+
+        <div class="ai-runtime-grid">
+          <article v-for="runtime in sdkRuntimes" :key="runtime.provider" class="ai-runtime-card">
+            <div class="card-title-row">
+              <strong>{{ runtime.label }}</strong>
+              <NTag :type="runtime.installed ? 'success' : 'warning'" size="small">
+                {{ runtime.installed ? '已安装' : '未安装' }}
+              </NTag>
+            </div>
+            <p class="muted">{{ runtime.packageName }}@{{ runtime.desiredVersion }}</p>
+            <div class="commands-meta">
+              <strong>当前版本</strong>
+              <span>{{ runtime.installedVersion || '未安装' }}</span>
+              <strong>占用空间</strong>
+              <span>{{ formatBytes(runtime.sizeBytes) }}</span>
+              <strong>安装目录</strong>
+              <span>{{ runtime.installPath }}</span>
+              <strong>安装方式</strong>
+              <span>{{ runtime.packageManager || '未检测' }}</span>
+            </div>
+            <p v-if="runtime.lastError" class="muted ai-runtime-warning">{{ runtime.lastError }}</p>
+            <NSpace>
+              <NButton
+                size="small"
+                type="primary"
+                :disabled="runtime.installed"
+                :loading="runtimeBusyMap[runtime.provider]"
+                @click="runRuntimeOperation(runtime.provider, 'install')"
+              >
+                安装
+              </NButton>
+              <NButton
+                size="small"
+                secondary
+                :disabled="!runtime.installed"
+                :loading="runtimeBusyMap[runtime.provider]"
+                @click="runRuntimeOperation(runtime.provider, 'update')"
+              >
+                更新
+              </NButton>
+              <NButton
+                size="small"
+                tertiary
+                :disabled="!runtime.installed"
+                :loading="runtimeBusyMap[runtime.provider]"
+                @click="runRuntimeOperation(runtime.provider, 'uninstall')"
+              >
+                卸载
+              </NButton>
+            </NSpace>
+          </article>
+        </div>
+      </section>
 
       <section class="ai-settings-section">
         <label class="appearance-modal-label">默认工作目录</label>
@@ -213,6 +319,16 @@ onMounted(async () => {
       <div class="ai-settings-runtime-grid">
         <section>
           <p class="eyebrow">codex</p>
+          <div class="commands-meta">
+            <strong>真实可用</strong>
+            <span>{{ codexStatus?.available ? '是' : '否' }}</span>
+            <strong>配置检测</strong>
+            <span>{{ codexStatus?.configDetected ? '已检测' : '未检测' }}</span>
+            <strong>应用 runtime</strong>
+            <span>{{ codexStatus?.runtimeInstalled ? '已安装' : '未安装' }}</span>
+            <strong>轻量探测</strong>
+            <span>{{ codexStatus?.probe.message || '等待检测' }}</span>
+          </div>
           <div class="chip-list">
             <span v-for="fact in codexFacts" :key="`codex-${fact.label}`" class="chip">
               {{ fact.label }}={{ fact.value }}
@@ -222,6 +338,16 @@ onMounted(async () => {
         </section>
         <section>
           <p class="eyebrow">claude</p>
+          <div class="commands-meta">
+            <strong>真实可用</strong>
+            <span>{{ claudeStatus?.available ? '是' : '否' }}</span>
+            <strong>配置检测</strong>
+            <span>{{ claudeStatus?.configDetected ? '已检测' : '未检测' }}</span>
+            <strong>应用 runtime</strong>
+            <span>{{ claudeStatus?.runtimeInstalled ? '已安装' : '未安装' }}</span>
+            <strong>轻量探测</strong>
+            <span>{{ claudeStatus?.probe.message || '等待检测' }}</span>
+          </div>
           <div class="chip-list">
             <span v-for="fact in claudeFacts" :key="`claude-${fact.label}`" class="chip">
               {{ fact.label }}={{ fact.value }}

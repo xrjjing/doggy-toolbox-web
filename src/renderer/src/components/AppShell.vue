@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NSelect, NSlider, NSwitch, NTag } from 'naive-ui'
 import {
@@ -18,11 +18,16 @@ import {
   TerminalOutline,
   SunnyOutline
 } from '@vicons/ionicons5'
-import AppearanceSettingsModal from '@renderer/components/AppearanceSettingsModal.vue'
-import GlobalSearchModal from '@renderer/components/GlobalSearchModal.vue'
 import { cloneAppearance, useAppStore, type AppAppearance } from '@renderer/stores/app'
 import { appThemeOptions } from '@renderer/stores/app'
 import { useToolSearchStore } from '@renderer/stores/tool-search'
+
+const AppearanceSettingsModal = defineAsyncComponent(
+  () => import('@renderer/components/AppearanceSettingsModal.vue')
+)
+const GlobalSearchModal = defineAsyncComponent(
+  () => import('@renderer/components/GlobalSearchModal.vue')
+)
 
 const route = useRoute()
 const router = useRouter()
@@ -50,6 +55,38 @@ const runtimeText = computed(() => {
   if (!info) return '检测中'
   return `${info.platform} · ${info.appVersion}`
 })
+
+const runtimeBadges = computed(() => {
+  const info = appStore.runtimeInfo
+  if (!info) return []
+  return [
+    {
+      label: 'Codex',
+      value: info.codex.available
+        ? '可用'
+        : info.codex.configDetected
+          ? '待安装 runtime'
+          : '未配置',
+      type: info.codex.available ? 'success' : info.codex.configDetected ? 'warning' : 'default'
+    },
+    {
+      label: 'Claude',
+      value: info.claude.available
+        ? '可用'
+        : info.claude.configDetected
+          ? '待安装 runtime'
+          : '未配置',
+      type: info.claude.available ? 'success' : info.claude.configDetected ? 'warning' : 'default'
+    }
+  ]
+})
+
+function resolveTagType(type: string): 'success' | 'warning' | 'default' {
+  if (type === 'success' || type === 'warning') {
+    return type
+  }
+  return 'default'
+}
 
 const titlebarModeOptions = [
   { label: '固定标题栏', value: 'fixed' },
@@ -138,9 +175,20 @@ function saveAppearanceModal(appearance: AppAppearance): void {
 
     <main class="main-panel">
       <header class="topbar">
-        <div>
+        <div class="topbar-meta">
           <p class="eyebrow">runtime</p>
           <strong>{{ runtimeText }}</strong>
+          <div class="topbar-badges">
+            <NTag
+              v-for="badge in runtimeBadges"
+              :key="badge.label"
+              size="small"
+              :type="resolveTagType(badge.type)"
+              :bordered="false"
+            >
+              {{ badge.label }} {{ badge.value }}
+            </NTag>
+          </div>
         </div>
         <div class="topbar-actions">
           <NButton secondary round @click="toolSearchStore.open">全局搜索 ⌘K</NButton>
@@ -161,6 +209,10 @@ function saveAppearanceModal(appearance: AppAppearance): void {
         <div class="appearance-current">
           <p class="eyebrow">appearance</p>
           <strong>{{ appStore.currentThemeLabel }}</strong>
+          <span class="appearance-meta-line">
+            {{ appStore.appearance.glassMode ? '毛玻璃已启用' : '实底模式' }} · 缩放
+            {{ appStore.appearance.uiScale }}%
+          </span>
         </div>
         <NSelect
           :value="appStore.appearance.theme"
@@ -210,11 +262,12 @@ function saveAppearanceModal(appearance: AppAppearance): void {
   </div>
 
   <AppearanceSettingsModal
+    v-if="showAppearanceModal"
     v-model:show="showAppearanceModal"
     :appearance="appStore.appearance"
     @preview="previewAppearance"
     @cancel="cancelAppearanceModal"
     @save="saveAppearanceModal"
   />
-  <GlobalSearchModal />
+  <GlobalSearchModal v-if="toolSearchStore.isOpen" />
 </template>

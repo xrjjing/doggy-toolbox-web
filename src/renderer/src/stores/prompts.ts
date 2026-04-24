@@ -3,8 +3,14 @@ import { defineStore } from 'pinia'
 import type {
   PromptCategory,
   PromptCategorySaveInput,
+  PromptExportDocument,
+  PromptExportInput,
+  PromptImportInput,
+  PromptImportResult,
   PromptModuleState,
+  PromptSaveAsTemplateInput,
   PromptTemplate,
+  PromptTemplateReorderInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput,
   PromptTemplateUseResult,
@@ -111,6 +117,16 @@ export const usePromptsStore = defineStore('prompts', () => {
     }
   }
 
+  async function reorderCategories(categoryIds: string[]): Promise<void> {
+    saving.value = true
+    try {
+      await window.doggy.reorderPromptCategories(categoryIds)
+      await load()
+    } finally {
+      saving.value = false
+    }
+  }
+
   /**
    * 保存模板后同步把分类焦点切到模板所属分类，
    * 这样跨分类保存后列表能立即定位到用户刚编辑的模板。
@@ -122,6 +138,29 @@ export const usePromptsStore = defineStore('prompts', () => {
       await load()
       activeCategoryId.value = template.categoryId || 'all'
       return template
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function saveAsTemplate(input: PromptSaveAsTemplateInput): Promise<PromptTemplate> {
+    saving.value = true
+    try {
+      const template = await window.doggy.savePromptAsTemplate(input)
+      await load()
+      activeCategoryId.value = template.categoryId || 'all'
+      return template
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function reorderTemplates(input: PromptTemplateReorderInput): Promise<void> {
+    saving.value = true
+    try {
+      await window.doggy.reorderPromptTemplates(input)
+      await load()
+      activeCategoryId.value = input.categoryId ? input.categoryId : 'all'
     } finally {
       saving.value = false
     }
@@ -166,6 +205,21 @@ export const usePromptsStore = defineStore('prompts', () => {
     return window.doggy.parsePromptVariables(content)
   }
 
+  async function exportTemplates(input?: PromptExportInput): Promise<PromptExportDocument> {
+    return window.doggy.exportPromptTemplates(input)
+  }
+
+  async function importTemplates(input: PromptImportInput): Promise<PromptImportResult> {
+    saving.value = true
+    try {
+      const result = await window.doggy.importPromptTemplates(input)
+      await load()
+      return result
+    } finally {
+      saving.value = false
+    }
+  }
+
   function setActiveCategory(categoryId: string): void {
     activeCategoryId.value = categoryId
   }
@@ -201,12 +255,17 @@ export const usePromptsStore = defineStore('prompts', () => {
     updatedAt,
     load,
     saveCategory,
+    reorderCategories,
     removeCategory,
     saveTemplate,
+    saveAsTemplate,
+    reorderTemplates,
     removeTemplate,
     toggleFavorite,
     useTemplate,
     parseVariables,
+    exportTemplates,
+    importTemplates,
     setActiveCategory,
     setSearch,
     setFavoritesOnly,

@@ -56,10 +56,12 @@ const categoryModalVisible = ref(false)
 const templateModalVisible = ref(false)
 const variablesModalVisible = ref(false)
 const resultModalVisible = ref(false)
+const importModalVisible = ref(false)
 // 这三个状态构成一次“使用模板”流程的上下文，只存在于页面层，不进入持久化 store。
 const currentTemplate = ref<PromptTemplate | null>(null)
 const variableValues = ref<Record<string, string>>({})
 const filledContent = ref('')
+const importJsonText = ref('')
 
 // 分类表单与模板表单分离，避免分类操作和模板正文编辑耦合到同一份状态里。
 const categoryForm = reactive<CategoryFormState>({
@@ -105,6 +107,32 @@ function formatUpdatedAt(value: string): string {
 function getCategoryName(categoryId: string): string {
   if (!categoryId) return '未分类'
   return promptsStore.categories.find((category) => category.id === categoryId)?.name ?? '未知分类'
+}
+
+function rotateCategoryOrder(direction: 'up' | 'down', categoryId: string): void {
+  const categories = [...promptsStore.categories]
+  const currentIndex = categories.findIndex((item) => item.id === categoryId)
+  if (currentIndex < 0) return
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= categories.length) return
+  const [current] = categories.splice(currentIndex, 1)
+  categories.splice(targetIndex, 0, current)
+  void promptsStore.reorderCategories(categories.map((item) => item.id))
+}
+
+function rotateTemplateOrder(direction: 'up' | 'down', template: PromptTemplate): void {
+  const categoryId = template.categoryId || ''
+  const templates = promptsStore.templates.filter((item) => (item.categoryId || '') === categoryId)
+  const currentIndex = templates.findIndex((item) => item.id === template.id)
+  if (currentIndex < 0) return
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= templates.length) return
+  const [current] = templates.splice(currentIndex, 1)
+  templates.splice(targetIndex, 0, current)
+  void promptsStore.reorderTemplates({
+    categoryId,
+    templateIds: templates.map((item) => item.id)
+  })
 }
 
 // 新建分类只重置分类弹窗自身状态，不影响当前模板筛选条件。
@@ -260,6 +288,56 @@ async function copyFilledContent(): Promise<void> {
   }
 }
 
+async function exportTemplates(): Promise<void> {
+  try {
+    const document = await promptsStore.exportTemplates({
+      includeCategories: true,
+      templateIds:
+        promptsStore.activeCategoryId === 'all'
+          ? undefined
+          : promptsStore.visibleTemplates.map((template) => template.id)
+    })
+    await navigator.clipboard.writeText(JSON.stringify(document, null, 2))
+    message.success('已导出当前视图模板 JSON，并复制到剪贴板')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function importTemplates(): Promise<void> {
+  try {
+    const result = await promptsStore.importTemplates({
+      json: importJsonText.value,
+      overwrite: false
+    })
+    importModalVisible.value = false
+    importJsonText.value = ''
+    message.success(`导入完成：新增 ${result.imported}，跳过 ${result.skipped}`)
+    if (result.errors.length > 0) {
+      message.warning(`其中 ${result.errors.length} 条存在问题，请检查 JSON 格式`)
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function saveResultAsTemplate(): Promise<void> {
+  if (!filledContent.value.trim()) {
+    message.warning('当前没有可保存的模板内容')
+    return
+  }
+  try {
+    await promptsStore.saveAsTemplate({
+      content: filledContent.value,
+      categoryId: currentTemplate.value?.categoryId,
+      title: `${currentTemplate.value?.title || '填充结果'} 副本`
+    })
+    message.success('已把填充结果另存为新模板')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 /**
  * Prompt 页 AI 入口聚焦“模板质量复查”而不是直接代替模板执行。
  * 这里把当前可见模板和变量信息打包给 AI，用于润色、分组建议和风险提示。
@@ -359,6 +437,13 @@ onMounted(() => {
       </div>
       <p>当前分类：{{ activeCategoryLabel }}；收藏数：{{ stats.favorites }}。</p>
     </article>
+    <article class="progress-card">
+      <div class="progress-head">
+        <strong>迁移补齐</strong>
+        <span>旧体验</span>
+      </div>
+      <p>已补回分类排序、模板排序、导入导出和“另存为模板”入口。</p>
+    </article>
   </section>
 
   <div class="prompts-shell">
@@ -397,9 +482,31 @@ onMounted(() => {
             <strong>{{ category.icon }} {{ category.name }}</strong>
             <p>{{ promptsStore.countByCategory(category.id) }} 个模板</p>
           </div>
-          <NButton size="tiny" secondary @click.stop="openEditCategoryModal(category.id)"
-            >编辑</NButton
-          >
+          <div class="list-order-actions">
+            <NButton
+              size="tiny"
+              quaternary
+              circle
+              :disabled="promptsStore.categories[0]?.id === category.id"
+              @click.stop="rotateCategoryOrder('up', category.id)"
+            >
+              ↑
+            </NButton>
+            <NButton
+              size="tiny"
+              quaternary
+              circle
+              :disabled="
+                promptsStore.categories[promptsStore.categories.length - 1]?.id === category.id
+              "
+              @click.stop="rotateCategoryOrder('down', category.id)"
+            >
+              ↓
+            </NButton>
+            <NButton size="tiny" secondary @click.stop="openEditCategoryModal(category.id)"
+              >编辑</NButton
+            >
+          </div>
         </button>
       </div>
 
@@ -431,6 +538,8 @@ onMounted(() => {
             <NButton secondary :loading="promptsStore.loading" @click="promptsStore.load"
               >刷新</NButton
             >
+            <NButton secondary @click="exportTemplates">导出 JSON</NButton>
+            <NButton secondary @click="importModalVisible = true">导入 JSON</NButton>
             <NButton
               secondary
               :disabled="!aiSettingsStore.isFeatureEnabled('prompts')"
@@ -475,6 +584,30 @@ onMounted(() => {
             <NButton size="small" type="primary" @click="openUseTemplate(template)">使用</NButton>
             <NButton size="small" secondary @click="toggleFavorite(template)">
               {{ template.isFavorite ? '取消收藏' : '收藏' }}
+            </NButton>
+            <NButton
+              size="small"
+              quaternary
+              :disabled="
+                promptsStore.templates.filter((item) => item.categoryId === template.categoryId)[0]
+                  ?.id === template.id
+              "
+              @click="rotateTemplateOrder('up', template)"
+            >
+              上移
+            </NButton>
+            <NButton
+              size="small"
+              quaternary
+              :disabled="
+                promptsStore.templates.filter((item) => item.categoryId === template.categoryId)[
+                  promptsStore.templates.filter((item) => item.categoryId === template.categoryId)
+                    .length - 1
+                ]?.id === template.id
+              "
+              @click="rotateTemplateOrder('down', template)"
+            >
+              下移
             </NButton>
             <NButton size="small" secondary @click="openEditTemplateModal(template)">编辑</NButton>
             <NPopconfirm @positive-click="deleteTemplate(template.id)">
@@ -608,7 +741,29 @@ onMounted(() => {
     <pre class="stream-output">{{ filledContent }}</pre>
     <div class="action-row modal-actions">
       <NButton secondary @click="resultModalVisible = false">关闭</NButton>
+      <NButton secondary @click="saveResultAsTemplate">另存为模板</NButton>
       <NButton type="primary" @click="copyFilledContent">复制结果</NButton>
+    </div>
+  </NModal>
+
+  <NModal
+    v-model:show="importModalVisible"
+    preset="card"
+    title="导入 Prompt 模板 JSON"
+    class="form-modal prompt-result-modal"
+  >
+    <p class="muted">兼容旧项目导出格式：`version / export_time / categories / templates`。</p>
+    <NInput
+      v-model:value="importJsonText"
+      type="textarea"
+      :autosize="{ minRows: 10, maxRows: 18 }"
+      placeholder='{"version":"1.0","templates":[{"title":"日志分析","content":"请分析 {{log}}"}]}'
+    />
+    <div class="action-row modal-actions">
+      <NButton secondary @click="importModalVisible = false">取消</NButton>
+      <NButton type="primary" :loading="promptsStore.saving" @click="importTemplates">
+        开始导入
+      </NButton>
     </div>
   </NModal>
 </template>

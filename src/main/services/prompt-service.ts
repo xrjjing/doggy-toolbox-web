@@ -2,8 +2,15 @@ import { randomUUID } from 'node:crypto'
 import type {
   PromptCategory,
   PromptCategorySaveInput,
+  PromptExportDocument,
+  PromptExportInput,
+  PromptExportTemplate,
+  PromptImportInput,
+  PromptImportResult,
   PromptModuleState,
+  PromptSaveAsTemplateInput,
   PromptTemplate,
+  PromptTemplateReorderInput,
   PromptTemplateSaveInput,
   PromptTemplateUseInput,
   PromptTemplateUseResult,
@@ -199,6 +206,10 @@ export function fillPromptTemplate(content: string, values: Record<string, strin
   )
 }
 
+function inferTemplateTitle(content: string): string {
+  return sanitizeText(String(content ?? '').split('\n')[0]).slice(0, 30) || '未命名模板'
+}
+
 function createDefaultState(): StoredPromptState {
   const timestamp = nowIso()
   return {
@@ -339,6 +350,36 @@ export class PromptService {
     return savedCategory
   }
 
+  async reorderCategories(categoryIds: string[]): Promise<{ ok: boolean }> {
+    const normalizedIds = Array.from(
+      new Set((categoryIds ?? []).map((id) => sanitizeText(id)).filter(Boolean))
+    )
+
+    await this.updateState((state) => {
+      const categoryMap = new Map(state.categories.map((category) => [category.id, category]))
+      let nextOrder = 0
+
+      for (const categoryId of normalizedIds) {
+        const category = categoryMap.get(categoryId)
+        if (!category) continue
+        categoryMap.set(categoryId, { ...category, order: nextOrder++, updatedAt: nowIso() })
+      }
+
+      for (const category of sortCategories(state.categories)) {
+        if (normalizedIds.includes(category.id)) continue
+        categoryMap.set(category.id, { ...category, order: nextOrder++, updatedAt: nowIso() })
+      }
+
+      return {
+        ...state,
+        updatedAt: nowIso(),
+        categories: sortCategories([...categoryMap.values()])
+      }
+    })
+
+    return { ok: true }
+  }
+
   async deleteCategory(categoryId: string): Promise<{ ok: boolean }> {
     const normalizedId = sanitizeText(categoryId)
     if (!normalizedId) {
@@ -442,6 +483,57 @@ export class PromptService {
     return savedTemplate
   }
 
+  async saveAsTemplate(input: PromptSaveAsTemplateInput): Promise<PromptTemplate> {
+    return this.saveTemplate({
+      title: sanitizeText(input.title) || inferTemplateTitle(input.content),
+      content: input.content,
+      categoryId: input.categoryId,
+      description: input.description,
+      tags: input.tags
+    })
+  }
+
+  async reorderTemplates(input: PromptTemplateReorderInput): Promise<{ ok: boolean }> {
+    const categoryId = sanitizeText(input.categoryId)
+    const templateIds = Array.from(
+      new Set((input.templateIds ?? []).map((id) => sanitizeText(id)).filter(Boolean))
+    )
+
+    await this.updateState((state) => {
+      const visibleTemplates = state.templates.filter((template) =>
+        categoryId ? template.categoryId === categoryId : !template.categoryId
+      )
+      const visibleIds = new Set(visibleTemplates.map((template) => template.id))
+      const templateMap = new Map(
+        visibleTemplates.map((template) => [template.id, { ...template }] as const)
+      )
+      let nextOrder = 0
+
+      for (const templateId of templateIds) {
+        const template = templateMap.get(templateId)
+        if (!template) continue
+        templateMap.set(templateId, { ...template, order: nextOrder++, updatedAt: nowIso() })
+      }
+
+      for (const template of sortTemplates(visibleTemplates)) {
+        if (templateIds.includes(template.id)) continue
+        templateMap.set(template.id, { ...template, order: nextOrder++, updatedAt: nowIso() })
+      }
+
+      return {
+        ...state,
+        updatedAt: nowIso(),
+        templates: sortTemplates(
+          state.templates.map((template) =>
+            visibleIds.has(template.id) ? (templateMap.get(template.id) ?? template) : template
+          )
+        )
+      }
+    })
+
+    return { ok: true }
+  }
+
   async deleteTemplate(templateId: string): Promise<{ ok: boolean }> {
     const normalizedId = sanitizeText(templateId)
     if (!normalizedId) {
@@ -540,6 +632,162 @@ export class PromptService {
 
   parseVariables(content: string): PromptVariable[] {
     return parsePromptVariables(content)
+  }
+
+  async exportTemplates(input: PromptExportInput = {}): Promise<PromptExportDocument> {
+    const state = await this.readState()
+    const selectedIds = new Set(
+      (input.templateIds ?? []).map((id) => sanitizeText(id)).filter(Boolean)
+    )
+    const templates = selectedIds.size
+      ? state.templates.filter((template) => selectedIds.has(template.id))
+      : state.templates
+    const categoryIds = new Set(templates.map((template) => template.categoryId).filter(Boolean))
+
+    const document: PromptExportDocument = {
+      version: '1.0',
+      export_time: nowIso(),
+      templates: templates.map(
+        (template): PromptExportTemplate => ({
+          title: template.title,
+          content: template.content,
+          description: template.description,
+          tags: template.tags,
+          category_id: template.categoryId || undefined
+        })
+      )
+    }
+
+    if (input.includeCategories !== false && categoryIds.size > 0) {
+      document.categories = state.categories
+        .filter((category) => categoryIds.has(category.id))
+        .map((category) => ({
+          id: category.id,
+          name: category.name,
+          icon: category.icon
+        }))
+    }
+
+    return document
+  }
+
+  async importTemplates(input: PromptImportInput): Promise<PromptImportResult> {
+    let parsed: {
+      categories?: Array<{ id?: string; name?: string; icon?: string }>
+      templates?: Array<{
+        title?: string
+        content?: string
+        description?: string
+        tags?: string[]
+        category_id?: string
+      }>
+    }
+
+    try {
+      parsed = JSON.parse(input.json)
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : 'Prompt 导入 JSON 解析失败')
+    }
+
+    const result: PromptImportResult = {
+      imported: 0,
+      skipped: 0,
+      errors: []
+    }
+
+    await this.updateState((state) => {
+      const timestamp = nowIso()
+      const categories = [...state.categories]
+      const templates = [...state.templates]
+      const categoryMap = new Map<string, string>()
+
+      for (const category of parsed.categories ?? []) {
+        const name = sanitizeText(category.name)
+        if (!name) continue
+        const existing = categories.find((item) => item.name === name)
+        if (existing) {
+          if (category.id) {
+            categoryMap.set(category.id, existing.id)
+          }
+          continue
+        }
+        const created: PromptCategory = {
+          id: randomUUID(),
+          name,
+          icon: sanitizeText(category.icon),
+          order: categories.reduce((maxOrder, item) => Math.max(maxOrder, item.order), -1) + 1,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+        categories.push(created)
+        if (category.id) {
+          categoryMap.set(category.id, created.id)
+        }
+      }
+
+      for (const importedTemplate of parsed.templates ?? []) {
+        const title = sanitizeText(importedTemplate.title)
+        const content = sanitizeMultiline(importedTemplate.content)
+        if (!title || !content) {
+          result.errors.push('模板缺少标题或内容')
+          continue
+        }
+
+        const description = sanitizeText(importedTemplate.description)
+        const tags = sanitizeTags(importedTemplate.tags)
+        const categoryId = importedTemplate.category_id
+          ? (categoryMap.get(importedTemplate.category_id) ?? '')
+          : ''
+        const existing = templates.find((template) => template.title === title)
+
+        if (existing) {
+          if (input.overwrite) {
+            const existingIndex = templates.findIndex((template) => template.id === existing.id)
+            templates[existingIndex] = {
+              ...existing,
+              title,
+              content,
+              description,
+              tags,
+              categoryId,
+              variables: parsePromptVariables(content),
+              updatedAt: timestamp
+            }
+            result.imported += 1
+          } else {
+            result.skipped += 1
+          }
+          continue
+        }
+
+        templates.push({
+          id: randomUUID(),
+          title,
+          content,
+          categoryId,
+          description,
+          tags,
+          variables: parsePromptVariables(content),
+          isFavorite: false,
+          isSystem: false,
+          usageCount: 0,
+          order:
+            templates.reduce((maxOrder, template) => Math.max(maxOrder, template.order), -1) + 1,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        })
+        result.imported += 1
+      }
+
+      return {
+        ...state,
+        updatedAt: timestamp,
+        categories: sortCategories(categories),
+        templates: sortTemplates(templates)
+      }
+    })
+
+    return result
   }
 
   async exportBackupSection(): Promise<Pick<PromptModuleState, 'categories' | 'templates'>> {
