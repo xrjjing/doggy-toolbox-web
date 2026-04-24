@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NIcon, NSelect, NSlider, NSwitch, NTag } from 'naive-ui'
+import { NButton, NIcon, NSwitch, NTag } from 'naive-ui'
 import {
   AlbumsOutline,
   ChatbubblesOutline,
   CloudUploadOutline,
+  ContrastOutline,
   DownloadOutline,
   GlobeOutline,
   KeyOutline,
@@ -15,11 +16,17 @@ import {
   ListCircleOutline,
   MoonOutline,
   OptionsOutline,
+  PawOutline,
   TerminalOutline,
   SunnyOutline
 } from '@vicons/ionicons5'
-import { cloneAppearance, useAppStore, type AppAppearance } from '@renderer/stores/app'
-import { appThemeOptions } from '@renderer/stores/app'
+import {
+  cloneAppearance,
+  describeRuntimeHealth,
+  getTitlebarModeLabel,
+  useAppStore,
+  type AppAppearance
+} from '@renderer/stores/app'
 import { useToolSearchStore } from '@renderer/stores/tool-search'
 
 const AppearanceSettingsModal = defineAsyncComponent(
@@ -59,26 +66,30 @@ const runtimeText = computed(() => {
 const runtimeBadges = computed(() => {
   const info = appStore.runtimeInfo
   if (!info) return []
+  const codexHealth = describeRuntimeHealth('Codex', info.codex)
+  const claudeHealth = describeRuntimeHealth('Claude', info.claude)
   return [
     {
       label: 'Codex',
-      value: info.codex.available
-        ? '可用'
-        : info.codex.configDetected
-          ? '待安装 runtime'
-          : '未配置',
-      type: info.codex.available ? 'success' : info.codex.configDetected ? 'warning' : 'default'
+      value: codexHealth.headline,
+      type: codexHealth.tone
     },
     {
       label: 'Claude',
-      value: info.claude.available
-        ? '可用'
-        : info.claude.configDetected
-          ? '待安装 runtime'
-          : '未配置',
-      type: info.claude.available ? 'success' : info.claude.configDetected ? 'warning' : 'default'
+      value: claudeHealth.headline,
+      type: claudeHealth.tone
     }
   ]
+})
+
+const appearanceSummary = computed(() => {
+  const appearance = appStore.appearance
+  return [
+    `${appStore.currentThemeLabel}`,
+    appearance.glassMode ? `毛玻璃 ${appearance.glassOpacity}%` : '实底模式',
+    `缩放 ${appearance.uiScale}%`,
+    getTitlebarModeLabel(appearance.titlebarMode)
+  ].join(' · ')
 })
 
 function resolveTagType(type: string): 'success' | 'warning' | 'default' {
@@ -87,11 +98,6 @@ function resolveTagType(type: string): 'success' | 'warning' | 'default' {
   }
   return 'default'
 }
-
-const titlebarModeOptions = [
-  { label: '固定标题栏', value: 'fixed' },
-  { label: '简约融合', value: 'minimal' }
-]
 
 function handleGlobalKeydown(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -113,9 +119,8 @@ onBeforeUnmount(() => {
 })
 
 /**
- * 顶部外观条继续保留“即时生效”的快捷入口。
- * 但旧项目还有更完整的设置弹窗，因此这里额外保存一份 origin，
- * 供弹窗关闭时恢复草稿前状态。
+ * 顶部现在只保留外观摘要和设置入口。
+ * 真正的细项控制统一放回弹窗，避免首页快捷控件和设置页重复、互相打架。
  */
 function openAppearanceModal(): void {
   appearanceModalOrigin.value = cloneAppearance(appStore.appearance)
@@ -144,9 +149,29 @@ function saveAppearanceModal(appearance: AppAppearance): void {
     :data-glass="appStore.appearance.glassMode ? 'true' : 'false'"
     :data-titlebar-mode="appStore.appearance.titlebarMode"
   >
+    <div class="window-drag-strip" />
+    <div class="window-float-controls">
+      <div class="window-float-pill">
+        <span class="window-float-dot close" />
+        <span class="window-float-dot minimize" />
+        <span class="window-float-dot maximize" />
+      </div>
+    </div>
+
     <aside class="sidebar">
       <section class="brand-card">
-        <div class="brand-mark">DT</div>
+        <div class="brand-mark" aria-hidden="true">
+          <span class="dog-mark-ears">
+            <i />
+            <i />
+          </span>
+          <span class="dog-mark-face">
+            <i class="dog-mark-eye left" />
+            <i class="dog-mark-eye right" />
+            <i class="dog-mark-nose" />
+            <i class="dog-mark-mouth" />
+          </span>
+        </div>
         <div>
           <p class="eyebrow">Doggy Toolbox</p>
           <h1>百宝箱 Web</h1>
@@ -175,87 +200,63 @@ function saveAppearanceModal(appearance: AppAppearance): void {
 
     <main class="main-panel">
       <header class="topbar">
-        <div class="topbar-meta">
-          <p class="eyebrow">runtime</p>
-          <strong>{{ runtimeText }}</strong>
-          <div class="topbar-badges">
-            <NTag
-              v-for="badge in runtimeBadges"
-              :key="badge.label"
-              size="small"
-              :type="resolveTagType(badge.type)"
-              :bordered="false"
-            >
-              {{ badge.label }} {{ badge.value }}
-            </NTag>
+        <div class="topbar-left">
+          <div class="topbar-meta">
+            <p class="eyebrow">runtime</p>
+            <strong>{{ runtimeText }}</strong>
+            <div class="topbar-badges">
+              <NTag
+                v-for="badge in runtimeBadges"
+                :key="badge.label"
+                size="small"
+                :type="resolveTagType(badge.type)"
+                :bordered="false"
+              >
+                {{ badge.label }} {{ badge.value }}
+              </NTag>
+            </div>
           </div>
+
+          <button class="appearance-summary-card" type="button" @click="openAppearanceModal">
+            <div class="appearance-summary-copy">
+              <p class="eyebrow">appearance</p>
+              <strong>{{ appearanceSummary }}</strong>
+              <span class="appearance-meta-line">
+                外观细项统一收口到设置弹窗，避免首页和设置页重复控制。
+              </span>
+            </div>
+            <span class="appearance-summary-icon">
+              <NIcon :component="ContrastOutline" />
+            </span>
+          </button>
         </div>
+
         <div class="topbar-actions">
-          <NButton secondary round @click="toolSearchStore.open">全局搜索 ⌘K</NButton>
-          <NIcon :component="SunnyOutline" />
-          <NSwitch :value="appStore.isDark" @update:value="appStore.toggleTheme" />
-          <NIcon :component="MoonOutline" />
-          <NButton secondary round @click="openAppearanceModal">
+          <div class="topbar-theme-switch">
+            <NIcon :component="SunnyOutline" />
+            <NSwitch :value="appStore.isDark" @update:value="appStore.toggleTheme" />
+            <NIcon :component="MoonOutline" />
+          </div>
+          <div class="window-title-pill">
+            <NIcon :component="PawOutline" />
+            <span>{{
+              appStore.appearance.titlebarMode === 'minimal' ? '简约窗口' : '正常窗口'
+            }}</span>
+          </div>
+          <NButton secondary round class="window-action" @click="toolSearchStore.open">
+            全局搜索 ⌘K
+          </NButton>
+          <NButton secondary round class="window-action" @click="openAppearanceModal">
             <template #icon>
               <NIcon :component="OptionsOutline" />
             </template>
             外观设置
           </NButton>
-          <NButton secondary round @click="appStore.loadRuntimeInfo()">刷新本机配置</NButton>
+          <NButton secondary round class="window-action" @click="appStore.loadRuntimeInfo()">
+            刷新本机配置
+          </NButton>
         </div>
       </header>
-
-      <section class="appearance-bar">
-        <div class="appearance-current">
-          <p class="eyebrow">appearance</p>
-          <strong>{{ appStore.currentThemeLabel }}</strong>
-          <span class="appearance-meta-line">
-            {{ appStore.appearance.glassMode ? '毛玻璃已启用' : '实底模式' }} · 缩放
-            {{ appStore.appearance.uiScale }}%
-          </span>
-        </div>
-        <NSelect
-          :value="appStore.appearance.theme"
-          :options="appThemeOptions"
-          size="small"
-          class="appearance-theme-select"
-          @update:value="(theme) => appStore.applyAppearance({ theme })"
-        />
-        <div class="appearance-inline">
-          <span>毛玻璃</span>
-          <NSwitch
-            :value="appStore.appearance.glassMode"
-            @update:value="(glassMode) => appStore.applyAppearance({ glassMode })"
-          />
-        </div>
-        <div class="appearance-slider">
-          <span>透明度 {{ appStore.appearance.glassOpacity }}%</span>
-          <NSlider
-            :value="appStore.appearance.glassOpacity"
-            :min="45"
-            :max="95"
-            :step="5"
-            @update:value="(glassOpacity) => appStore.applyAppearance({ glassOpacity })"
-          />
-        </div>
-        <div class="appearance-slider">
-          <span>缩放 {{ appStore.appearance.uiScale }}%</span>
-          <NSlider
-            :value="appStore.appearance.uiScale"
-            :min="50"
-            :max="100"
-            :step="5"
-            @update:value="(uiScale) => appStore.applyAppearance({ uiScale })"
-          />
-        </div>
-        <NSelect
-          :value="appStore.appearance.titlebarMode"
-          :options="titlebarModeOptions"
-          size="small"
-          class="appearance-titlebar-select"
-          @update:value="(titlebarMode) => appStore.applyAppearance({ titlebarMode })"
-        />
-      </section>
 
       <RouterView />
     </main>

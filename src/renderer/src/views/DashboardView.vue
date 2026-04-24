@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { NCard, NGrid, NGridItem, NProgress, NTag } from 'naive-ui'
-import { useAppStore } from '@renderer/stores/app'
+import { describeRuntimeHealth, useAppStore } from '@renderer/stores/app'
 
 const appStore = useAppStore()
 
@@ -10,43 +10,21 @@ const runtimeCards = computed(
     [
       {
         title: 'Codex 本机链路',
-        status: appStore.runtimeInfo?.codex.available
-          ? '真实可用'
-          : appStore.runtimeInfo?.codex.configDetected
-            ? '配置已找到'
-            : '未配置',
-        detail: appStore.runtimeInfo?.codex.details ?? '等待检测',
-        type: appStore.runtimeInfo?.codex.available
-          ? 'success'
-          : appStore.runtimeInfo?.codex.configDetected
-            ? 'warning'
-            : 'default',
+        status: describeRuntimeHealth('Codex', appStore.runtimeInfo?.codex).headline,
+        detail: describeRuntimeHealth('Codex', appStore.runtimeInfo?.codex).summary,
+        type: describeRuntimeHealth('Codex', appStore.runtimeInfo?.codex).tone,
         facts: appStore.runtimeInfo?.codex.facts ?? [],
         probe: appStore.runtimeInfo?.codex.probe.message ?? '等待检测',
-        extra: [
-          `配置文件：${appStore.runtimeInfo?.codex.configDetected ? '已检测' : '未检测'}`,
-          `AI runtime：${appStore.runtimeInfo?.codex.runtimeInstalled ? '已安装' : '未安装'}`
-        ]
+        extra: describeRuntimeHealth('Codex', appStore.runtimeInfo?.codex).chips
       },
       {
         title: 'Claude Code 本机链路',
-        status: appStore.runtimeInfo?.claude.available
-          ? '真实可用'
-          : appStore.runtimeInfo?.claude.configDetected
-            ? '配置已找到'
-            : '未配置',
-        detail: appStore.runtimeInfo?.claude.details ?? '等待检测',
-        type: appStore.runtimeInfo?.claude.available
-          ? 'success'
-          : appStore.runtimeInfo?.claude.configDetected
-            ? 'warning'
-            : 'default',
+        status: describeRuntimeHealth('Claude', appStore.runtimeInfo?.claude).headline,
+        detail: describeRuntimeHealth('Claude', appStore.runtimeInfo?.claude).summary,
+        type: describeRuntimeHealth('Claude', appStore.runtimeInfo?.claude).tone,
         facts: appStore.runtimeInfo?.claude.facts ?? [],
         probe: appStore.runtimeInfo?.claude.probe.message ?? '等待检测',
-        extra: [
-          `配置文件：${appStore.runtimeInfo?.claude.configDetected ? '已检测' : '未检测'}`,
-          `AI runtime：${appStore.runtimeInfo?.claude.runtimeInstalled ? '已安装' : '未安装'}`
-        ]
+        extra: describeRuntimeHealth('Claude', appStore.runtimeInfo?.claude).chips
       },
       {
         title: '数据目录',

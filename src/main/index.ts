@@ -187,12 +187,39 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
+    if (is.dev) {
+      mainWindow?.webContents.openDevTools({ mode: 'detach', activate: false })
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     // 外链统一交给系统浏览器，减少在应用内打开未知网页的安全面。
     void shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const key = input.key.toLowerCase()
+    const commandOrControl = input.meta || input.control
+    const shouldToggleDevTools =
+      input.type === 'keyDown' &&
+      (key === 'f12' || (commandOrControl && input.shift && key === 'i'))
+    const shouldReload =
+      input.type === 'keyDown' && (key === 'f5' || (commandOrControl && key === 'r'))
+
+    if (shouldToggleDevTools) {
+      event.preventDefault()
+      if (mainWindow?.webContents.isDevToolsOpened()) {
+        mainWindow.webContents.closeDevTools()
+      } else {
+        mainWindow?.webContents.openDevTools({ mode: 'detach', activate: false })
+      }
+    }
+
+    if (shouldReload) {
+      event.preventDefault()
+      mainWindow?.webContents.reloadIgnoringCache()
+    }
   })
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {

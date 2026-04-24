@@ -4,7 +4,7 @@ import { NButton, NCard, NCheckbox, NInput, NSpace, NTag, useMessage } from 'nai
 import type { AiFeatureModuleId, AiProviderKind, AiSdkRuntimeState } from '@shared/ipc-contract'
 import { useAiStore } from '@renderer/stores/ai'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
-import { useAppStore } from '@renderer/stores/app'
+import { describeRuntimeHealth, useAppStore } from '@renderer/stores/app'
 
 /**
  * 旧项目的 ai-settings 里，一半是 Provider CRUD，一半是工具 AI 开关。
@@ -73,6 +73,8 @@ const codexFacts = computed(() => appStore.runtimeInfo?.codex.facts ?? [])
 const claudeFacts = computed(() => appStore.runtimeInfo?.claude.facts ?? [])
 const codexStatus = computed(() => appStore.runtimeInfo?.codex ?? null)
 const claudeStatus = computed(() => appStore.runtimeInfo?.claude ?? null)
+const codexHealth = computed(() => describeRuntimeHealth('Codex', codexStatus.value))
+const claudeHealth = computed(() => describeRuntimeHealth('Claude', claudeStatus.value))
 const sdkRuntimes = computed(() => {
   const state = sdkRuntimeState.value
   return state ? [state.runtimes.codex, state.runtimes['claude-code']] : []
@@ -317,17 +319,29 @@ onMounted(async () => {
       </template>
 
       <div class="ai-settings-runtime-grid">
-        <section>
-          <p class="eyebrow">codex</p>
+        <section class="runtime-status-card">
+          <div class="card-title-row">
+            <p class="eyebrow">codex</p>
+            <NTag :type="codexHealth.tone" size="small" :bordered="false">
+              {{ codexHealth.headline }}
+            </NTag>
+          </div>
+          <div class="runtime-status-copy">
+            <strong>{{ codexHealth.summary }}</strong>
+            <span class="muted">{{ codexStatus?.probe.message || '等待检测' }}</span>
+          </div>
           <div class="commands-meta">
-            <strong>真实可用</strong>
-            <span>{{ codexStatus?.available ? '是' : '否' }}</span>
-            <strong>配置检测</strong>
+            <strong>本机配置</strong>
             <span>{{ codexStatus?.configDetected ? '已检测' : '未检测' }}</span>
             <strong>应用 runtime</strong>
             <span>{{ codexStatus?.runtimeInstalled ? '已安装' : '未安装' }}</span>
-            <strong>轻量探测</strong>
-            <span>{{ codexStatus?.probe.message || '等待检测' }}</span>
+            <strong>最终可用</strong>
+            <span>{{ codexStatus?.available ? '是' : '否' }}</span>
+          </div>
+          <div class="chip-list">
+            <span v-for="chip in codexHealth.chips" :key="`codex-chip-${chip}`" class="chip">
+              {{ chip }}
+            </span>
           </div>
           <div class="chip-list">
             <span v-for="fact in codexFacts" :key="`codex-${fact.label}`" class="chip">
@@ -336,17 +350,29 @@ onMounted(async () => {
             <span v-if="codexFacts.length === 0" class="chip">未检测到更多配置事实</span>
           </div>
         </section>
-        <section>
-          <p class="eyebrow">claude</p>
+        <section class="runtime-status-card">
+          <div class="card-title-row">
+            <p class="eyebrow">claude</p>
+            <NTag :type="claudeHealth.tone" size="small" :bordered="false">
+              {{ claudeHealth.headline }}
+            </NTag>
+          </div>
+          <div class="runtime-status-copy">
+            <strong>{{ claudeHealth.summary }}</strong>
+            <span class="muted">{{ claudeStatus?.probe.message || '等待检测' }}</span>
+          </div>
           <div class="commands-meta">
-            <strong>真实可用</strong>
-            <span>{{ claudeStatus?.available ? '是' : '否' }}</span>
-            <strong>配置检测</strong>
+            <strong>本机配置</strong>
             <span>{{ claudeStatus?.configDetected ? '已检测' : '未检测' }}</span>
             <strong>应用 runtime</strong>
             <span>{{ claudeStatus?.runtimeInstalled ? '已安装' : '未安装' }}</span>
-            <strong>轻量探测</strong>
-            <span>{{ claudeStatus?.probe.message || '等待检测' }}</span>
+            <strong>最终可用</strong>
+            <span>{{ claudeStatus?.available ? '是' : '否' }}</span>
+          </div>
+          <div class="chip-list">
+            <span v-for="chip in claudeHealth.chips" :key="`claude-chip-${chip}`" class="chip">
+              {{ chip }}
+            </span>
           </div>
           <div class="chip-list">
             <span v-for="fact in claudeFacts" :key="`claude-${fact.label}`" class="chip">

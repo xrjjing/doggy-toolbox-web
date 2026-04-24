@@ -2,11 +2,21 @@ import { defineStore } from 'pinia'
 import type {
   AppAppearance,
   AppThemeId,
+  LocalRuntimeStatus,
   RuntimeInfo,
   TitlebarMode
 } from '../../../shared/ipc-contract'
 
 export type { AppAppearance, AppThemeId, TitlebarMode } from '../../../shared/ipc-contract'
+
+export type RuntimeHealthTone = 'success' | 'warning' | 'default'
+
+export type RuntimeHealthDescriptor = {
+  headline: string
+  tone: RuntimeHealthTone
+  summary: string
+  chips: string[]
+}
 
 /**
  * 应用级外观与运行时信息 store。
@@ -53,8 +63,8 @@ export const appThemeOptions: Array<{ label: string; value: AppThemeId; dark: bo
 ]
 
 export const titlebarModeOptions: Array<{ label: string; value: TitlebarMode }> = [
-  { label: '固定模式', value: 'fixed' },
-  { label: '极简模式', value: 'minimal' }
+  { label: '正常模式', value: 'fixed' },
+  { label: '简约模式', value: 'minimal' }
 ]
 
 const APPEARANCE_STORAGE_KEY = 'doggy-toolbox-web:appearance'
@@ -68,6 +78,72 @@ export const defaultAppearance: AppAppearance = {
   glassOpacity: 72,
   uiScale: 80,
   titlebarMode: 'fixed'
+}
+
+export function getTitlebarModeLabel(mode: TitlebarMode): string {
+  return mode === 'minimal' ? '简约模式' : '正常模式'
+}
+
+export function describeRuntimeHealth(
+  providerLabel: string,
+  status?: LocalRuntimeStatus | null
+): RuntimeHealthDescriptor {
+  if (!status) {
+    return {
+      headline: '检测中',
+      tone: 'default',
+      summary: `正在检测 ${providerLabel} 的本机配置与应用 runtime。`,
+      chips: []
+    }
+  }
+
+  const chips = [
+    `本机配置${status.configDetected ? '已检测' : '未检测'}`,
+    `应用 runtime${status.runtimeInstalled ? '已安装' : '未安装'}`
+  ]
+
+  if (status.available) {
+    return {
+      headline: '真实可用',
+      tone: 'success',
+      summary: `${providerLabel} 的本机配置和当前应用 runtime 都已经就绪。`,
+      chips
+    }
+  }
+
+  if (status.configDetected && !status.runtimeInstalled) {
+    return {
+      headline: '本机已配置',
+      tone: 'warning',
+      summary: `${providerLabel} 的本机配置已经存在，但当前应用专用 runtime 还没有安装。`,
+      chips
+    }
+  }
+
+  if (!status.configDetected && status.runtimeInstalled) {
+    return {
+      headline: '应用已安装',
+      tone: 'warning',
+      summary: `${providerLabel} 的应用 runtime 已安装，但还没有检测到当前机器上的本机配置。`,
+      chips
+    }
+  }
+
+  if (status.probe.status === 'failed') {
+    return {
+      headline: '待修复',
+      tone: 'warning',
+      summary: status.probe.message,
+      chips
+    }
+  }
+
+  return {
+    headline: '未配置',
+    tone: 'default',
+    summary: `当前机器还没有准备好 ${providerLabel} 的本机配置，也没有安装应用 runtime。`,
+    chips
+  }
 }
 
 /**
@@ -182,6 +258,17 @@ export const useAppStore = defineStore('app', {
      */
     resetAppearance() {
       this.commitAppearance(cloneAppearance(defaultAppearance))
+    },
+    /**
+     * renderer 刷新后，需要把本地已保存的外观重新同步到 BrowserWindow。
+     * 否则窗口级缩放、按钮位置和 vibrancy 会停留在主进程默认值。
+     */
+    async syncAppearanceToWindow() {
+      try {
+        await window.doggy.applyAppearance(this.appearance)
+      } catch {
+        // 同步失败时不阻断页面启动，用户仍可在设置里继续调整。
+      }
     },
     /**
      * 运行时信息只读展示，不参与本地缓存。

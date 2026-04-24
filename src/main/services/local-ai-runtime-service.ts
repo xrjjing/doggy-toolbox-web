@@ -154,7 +154,7 @@ export class LocalAiRuntimeService {
         probe.status === 'success'
           ? 'Codex SDK runtime 与本机配置均已就绪'
           : probe.status === 'failed'
-            ? 'Codex 本机链路不完整，请先完成 runtime 安装或修复登录态'
+            ? 'Codex 本机配置与应用 runtime 还没有同时就绪，请根据状态提示补齐缺失项'
             : 'Codex 运行时已跳过探测，请先补齐本机配置与 runtime',
       configPath: snapshot.configPath,
       authPath: snapshot.authPath,
@@ -206,7 +206,7 @@ export class LocalAiRuntimeService {
         probe.status === 'success'
           ? 'Claude Agent runtime 与本机配置均已就绪'
           : probe.status === 'failed'
-            ? 'Claude 本机链路不完整，请先完成 runtime 安装或检查 ~/.claude.json'
+            ? 'Claude 本机配置与应用 runtime 还没有同时就绪，请根据状态提示补齐缺失项'
             : 'Claude 运行时已跳过探测，请先补齐本机配置与 runtime',
       configPath: snapshot.configPath,
       files: [createFileState('~/.claude.json', snapshot.configPath, snapshot.configDetected)],

@@ -75,12 +75,12 @@ function resetDraft(): void {
 <template>
   <NModal
     :show="show"
-    preset="card"
     class="appearance-settings-modal"
     @mask-click="closeWithRestore"
-    @update:show="(value) => !value && closeWithRestore()"
+    @esc="closeWithRestore"
+    @update:show="(value) => (value ? emit('update:show', value) : closeWithRestore())"
   >
-    <NCard :bordered="false">
+    <NCard :bordered="false" closable @close="closeWithRestore">
       <template #header>
         <div class="card-title-row">
           <div>
