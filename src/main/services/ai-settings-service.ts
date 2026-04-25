@@ -27,8 +27,7 @@ function createDefaultFeatures(): AiFeatureSettings {
     tools: true,
     http: true,
     commands: true,
-    prompts: true,
-    nodes: true
+    prompts: true
   }
 }
 
@@ -56,8 +55,7 @@ function normalizeFeatures(input: Partial<AiFeatureSettings> | undefined): AiFea
     tools: input?.tools ?? defaults.tools,
     http: input?.http ?? defaults.http,
     commands: input?.commands ?? defaults.commands,
-    prompts: input?.prompts ?? defaults.prompts,
-    nodes: input?.nodes ?? defaults.nodes
+    prompts: input?.prompts ?? defaults.prompts
   }
 }
 

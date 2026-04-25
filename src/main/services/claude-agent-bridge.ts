@@ -5,7 +5,49 @@ import type {
   AiToolCallSummary
 } from '../../shared/ipc-contract'
 import type { AiProviderBridge, AiProviderRunContext } from './ai-provider-router'
+import { AiSdkRuntimeManager } from './ai-sdk-runtime-manager'
 import { LocalAiRuntimeService } from './local-ai-runtime-service'
+
+type ClaudeQueryInput = {
+  prompt: string
+  options: {
+    cwd: string
+    abortController: AbortController
+    settingSources: Array<'user' | 'project' | 'local'>
+    permissionMode: 'acceptEdits'
+  }
+}
+
+type ClaudeQuery = (input: ClaudeQueryInput) => AsyncIterable<ClaudeRawMessage>
+
+type ClaudeRawMessage =
+  | { type: 'system'; subtype: 'init'; session_id: string; permissionMode: string }
+  | { type: 'system'; subtype: 'session_state_changed'; state: string }
+  | { type: 'stream_event'; event?: unknown }
+  | { type: 'assistant'; message?: { content?: unknown[] } }
+  | {
+      type: 'tool_progress'
+      tool_use_id: string
+      tool_name: string
+      elapsed_time_seconds: number
+    }
+  | { type: 'tool_use_summary'; uuid: string; summary: string }
+  | {
+      type: 'result'
+      subtype: 'success' | string
+      errors: string[]
+      result?: string
+      session_id?: string
+      usage: { input_tokens?: number; output_tokens?: number }
+      total_cost_usd?: number
+    }
+
+async function loadClaudeAgentSdk(runtimeManager: AiSdkRuntimeManager): Promise<{
+  query: ClaudeQuery
+}> {
+  const importUrl = await runtimeManager.getImportUrl('claude-code')
+  return import(importUrl) as Promise<{ query: ClaudeQuery }>
+}
 
 /**
  * 与 Codex Bridge 保持同一输入策略，便于 renderer 复用完全相同的调用模型。
@@ -39,7 +81,10 @@ function createToolEvent(
  * 上层无需理解它的专有消息类型，只消费统一流事件。
  */
 export class ClaudeAgentBridge implements AiProviderBridge {
-  constructor(private readonly runtimeService: LocalAiRuntimeService) {}
+  constructor(
+    private readonly runtimeService: LocalAiRuntimeService,
+    private readonly sdkRuntimeManager: AiSdkRuntimeManager
+  ) {}
 
   async getRuntime(input: AiStartChatInput): Promise<AiSessionRuntime> {
     const snapshot = await this.runtimeService.getClaudeSnapshot()
@@ -52,7 +97,7 @@ export class ClaudeAgentBridge implements AiProviderBridge {
 
   async run(context: AiProviderRunContext): Promise<void> {
     const runtime = await this.getRuntime(context.input)
-    const { query } = await import('@anthropic-ai/claude-agent-sdk')
+    const { query } = await loadClaudeAgentSdk(this.sdkRuntimeManager)
     const abortController = new AbortController()
     // 把上层 abort 信号桥接给 Claude SDK，避免维护两套取消状态。
     context.abortSignal.addEventListener('abort', () => abortController.abort(), { once: true })

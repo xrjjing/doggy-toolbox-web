@@ -5,7 +5,65 @@ import type {
   AiToolCallSummary
 } from '../../shared/ipc-contract'
 import type { AiProviderBridge, AiProviderRunContext } from './ai-provider-router'
+import { AiSdkRuntimeManager } from './ai-sdk-runtime-manager'
 import { LocalAiRuntimeService } from './local-ai-runtime-service'
+
+type CodexConstructor = new (options?: { baseUrl?: string; env?: Record<string, string> }) => {
+  startThread: (input: {
+    workingDirectory: string
+    approvalPolicy: 'never' | 'on-failure' | 'untrusted' | 'on-request'
+    sandboxMode: 'read-only' | 'danger-full-access' | 'workspace-write'
+    skipGitRepoCheck: boolean
+    model?: string
+    networkAccessEnabled: boolean
+  }) => {
+    runStreamed: (
+      prompt: string,
+      options: { signal: AbortSignal }
+    ) => Promise<{ events: AsyncIterable<CodexRawEvent> }>
+  }
+}
+
+type CodexRawEvent =
+  | { type: 'thread.started'; thread_id: string }
+  | { type: 'turn.started' }
+  | { type: 'turn.completed'; usage: { input_tokens?: number; output_tokens?: number } }
+  | { type: 'turn.failed'; error: { message: string } }
+  | { type: 'error'; message: string }
+  | { type: 'item.started' | 'item.updated' | 'item.completed'; item: CodexRawItem }
+
+type CodexRawItem =
+  | { type: 'reasoning' | 'agent_message'; id: string; text?: string }
+  | {
+      type: 'command_execution'
+      id: string
+      command?: string
+      status?: 'in_progress' | 'failed' | string
+      aggregated_output?: string
+    }
+  | {
+      type: 'mcp_tool_call'
+      id: string
+      server: string
+      tool: string
+      status?: 'in_progress' | 'failed' | string
+      error?: { message?: string }
+    }
+  | { type: 'web_search'; id: string; query?: string }
+  | {
+      type: 'file_change'
+      id: string
+      status?: 'failed' | string
+      changes: Array<{ kind: string; path: string }>
+    }
+  | { type: 'todo_list'; id: string; items: Array<{ completed: boolean; text: string }> }
+
+async function loadCodexSdk(runtimeManager: AiSdkRuntimeManager): Promise<{
+  Codex: CodexConstructor
+}> {
+  const importUrl = await runtimeManager.getImportUrl('codex')
+  return import(importUrl) as Promise<{ Codex: CodexConstructor }>
+}
 
 /**
  * 当前 renderer 传入的是轻量消息数组，这里先压平成单段 prompt 交给 Codex 线程。
@@ -41,7 +99,10 @@ function createToolEvent(
  * 历史落盘和窗口广播都不在这里做，而是交给上层会话服务。
  */
 export class CodexSdkBridge implements AiProviderBridge {
-  constructor(private readonly runtimeService: LocalAiRuntimeService) {}
+  constructor(
+    private readonly runtimeService: LocalAiRuntimeService,
+    private readonly sdkRuntimeManager: AiSdkRuntimeManager
+  ) {}
 
   async getRuntime(input: AiStartChatInput): Promise<AiSessionRuntime> {
     const snapshot = await this.runtimeService.getCodexSnapshot()
@@ -60,7 +121,7 @@ export class CodexSdkBridge implements AiProviderBridge {
 
   async run(context: AiProviderRunContext): Promise<void> {
     const runtime = await this.getRuntime(context.input)
-    const { Codex } = await import('@openai/codex-sdk')
+    const { Codex } = await loadCodexSdk(this.sdkRuntimeManager)
     // 仅透传 PATH，避免把主进程环境变量无差别注入到底层运行时。
     const codex = new Codex({
       baseUrl: runtime.baseUrl,

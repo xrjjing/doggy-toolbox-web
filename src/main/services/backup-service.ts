@@ -10,14 +10,12 @@ import type { AiSettingsService } from './ai-settings-service'
 import type { CommandService } from './command-service'
 import type { CredentialService } from './credential-service'
 import type { HttpCollectionService } from './http-collection-service'
-import type { NodeService } from './node-service'
 import type { PromptService } from './prompt-service'
 
 const DEFAULT_SECTIONS: BackupSectionKey[] = [
   'commands',
   'credentials',
   'prompts',
-  'nodes',
   'httpCollections',
   'aiSettings'
 ]
@@ -31,7 +29,6 @@ export type BackupServiceDependencies = {
   commandService: CommandService
   credentialService: CredentialService
   httpCollectionService: HttpCollectionService
-  nodeService: NodeService
   promptService: PromptService
 }
 
@@ -50,7 +47,6 @@ function createEmptySummary(): BackupSummary {
     credentials: 0,
     promptCategories: 0,
     promptTemplates: 0,
-    nodes: 0,
     httpCollections: 0,
     httpRequests: 0,
     httpEnvironments: 0,
@@ -105,11 +101,6 @@ export class BackupService {
       summary.promptTemplates = data.prompts.templates.length
     }
 
-    if (sections.includes('nodes')) {
-      data.nodes = await this.dependencies.nodeService.exportBackupSection()
-      summary.nodes = data.nodes.nodes.length
-    }
-
     if (sections.includes('httpCollections')) {
       data.httpCollections = await this.dependencies.httpCollectionService.exportBackupSection()
       summary.httpCollections = data.httpCollections.collections.length
@@ -158,11 +149,6 @@ export class BackupService {
       const state = await this.dependencies.promptService.restoreBackupSection(parsed.data.prompts)
       summary.promptCategories = state.categories.length
       summary.promptTemplates = state.templates.length
-    }
-
-    if (sections.includes('nodes') && parsed.data.nodes) {
-      const state = await this.dependencies.nodeService.restoreBackupSection(parsed.data.nodes)
-      summary.nodes = state.nodes.length
     }
 
     if (sections.includes('httpCollections') && parsed.data.httpCollections) {

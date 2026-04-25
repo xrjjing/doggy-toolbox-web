@@ -18,8 +18,7 @@ const FALLBACK_SETTINGS: AiSettings = {
     tools: true,
     http: true,
     commands: true,
-    prompts: true,
-    nodes: true
+    prompts: true
   }
 }
 

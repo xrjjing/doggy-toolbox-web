@@ -16,6 +16,7 @@ import type {
   PromptTemplateUseResult,
   PromptVariable
 } from '../../shared/ipc-contract'
+import { fillPromptTemplate, parsePromptVariables } from '../../shared/prompt-template-core'
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
 import { JsonFileRepository } from './json-repository'
 
@@ -25,8 +26,6 @@ type StoredPromptState = {
   categories: PromptCategory[]
   templates: PromptTemplate[]
 }
-
-const VARIABLE_PATTERN = /\{\{(\w+)(?::([^}|]+))?(?:\|([^}]+))?\}\}/g
 
 const DEFAULT_CATEGORIES: Array<Omit<PromptCategory, 'createdAt' | 'updatedAt'>> = [
   { id: 'cat_coding', name: '编程开发', icon: '</>', order: 0 },
@@ -158,52 +157,6 @@ function sanitizeMultiline(value: string | undefined): string {
 
 function sanitizeTags(tags: string[] | undefined): string[] {
   return Array.from(new Set((tags ?? []).map((tag) => sanitizeText(tag)).filter(Boolean)))
-}
-
-export function parsePromptVariables(content: string): PromptVariable[] {
-  const variables: PromptVariable[] = []
-  const seen = new Set<string>()
-  const pattern = new RegExp(VARIABLE_PATTERN)
-
-  for (const match of String(content ?? '').matchAll(pattern)) {
-    const name = match[1]
-    if (seen.has(name)) continue
-    seen.add(name)
-
-    const defaultValue = match[2] ?? ''
-    const options =
-      match[3]
-        ?.split('|')
-        .map((option) => option.trim())
-        .filter(Boolean) ?? []
-
-    variables.push({
-      name,
-      type: options.length > 0 ? 'select' : 'text',
-      defaultValue: defaultValue || options[0] || '',
-      options
-    })
-  }
-
-  return variables
-}
-
-export function fillPromptTemplate(content: string, values: Record<string, string> = {}): string {
-  return String(content ?? '').replace(
-    VARIABLE_PATTERN,
-    (_full, name: string, defaultValue = '', optionsText = '') => {
-      if (Object.prototype.hasOwnProperty.call(values, name)) {
-        return values[name]
-      }
-
-      const options = String(optionsText)
-        .split('|')
-        .map((option) => option.trim())
-        .filter(Boolean)
-
-      return options[0] || defaultValue || ''
-    }
-  )
 }
 
 function inferTemplateTitle(content: string): string {

@@ -139,7 +139,7 @@ export type AiStartChatInput = {
  * 2. 各模块发起 AI 会话时的权限判断。
  * 3. 后续文档里对“哪个页面已经接入 AI”的统一口径。
  */
-export type AiFeatureModuleId = 'ai-chat' | 'tools' | 'http' | 'commands' | 'prompts' | 'nodes'
+export type AiFeatureModuleId = 'ai-chat' | 'tools' | 'http' | 'commands' | 'prompts'
 
 export type AiFeatureSettings = Record<AiFeatureModuleId, boolean>
 
@@ -523,66 +523,6 @@ export type PromptModuleState = {
   templates: PromptTemplate[]
 }
 
-export type NodeRecord = {
-  id: string
-  name: string
-  type: string
-  server: string
-  port: number
-  rawLink: string
-  configText: string
-  tags: string[]
-  order: number
-  createdAt: string
-  updatedAt: string
-}
-
-export type NodeSaveInput = {
-  id?: string
-  name: string
-  type: string
-  server: string
-  port: number
-  rawLink?: string
-  configText?: string
-  tags?: string[]
-}
-
-export type NodeModuleState = {
-  storageFile: string
-  updatedAt: string
-  nodes: NodeRecord[]
-}
-
-export type NodeConversionRecord = {
-  name: string
-  type: string
-  server: string
-  port: number
-  rawLink: string
-  configText: string
-  tags: string[]
-}
-
-export type NodeConversionResult = {
-  nodes: NodeConversionRecord[]
-  yaml: string
-  json: string
-  errors: string[]
-}
-
-export type NodeValidationResult = {
-  name: string
-  type: string
-  valid: boolean
-  errors: string[]
-  warnings: string[]
-}
-
-export type NodeSubscriptionFetchResult = NodeConversionResult & {
-  sourceText: string
-}
-
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
 export type HttpKeyValue = {
@@ -773,7 +713,6 @@ export type BackupSectionKey =
   | 'commands'
   | 'credentials'
   | 'prompts'
-  | 'nodes'
   | 'httpCollections'
   | 'aiSettings'
 
@@ -783,7 +722,6 @@ export type BackupSummary = {
   credentials: number
   promptCategories: number
   promptTemplates: number
-  nodes: number
   httpCollections: number
   httpRequests: number
   httpEnvironments: number
@@ -801,7 +739,6 @@ export type BackupDocument = {
     commands?: Pick<CommandModuleState, 'tabs' | 'commands'>
     credentials?: Pick<CredentialModuleState, 'credentials'>
     prompts?: Pick<PromptModuleState, 'categories' | 'templates'>
-    nodes?: Pick<NodeModuleState, 'nodes'>
     httpCollections?: Pick<
       HttpCollectionModuleState,
       'collections' | 'requests' | 'environments' | 'history'
@@ -879,12 +816,6 @@ export type BridgeApi = {
   importCredentials: (input: CredentialImportInput) => Promise<CredentialImportResult>
   reorderCredentials: (credentialIds: string[]) => Promise<{ ok: boolean }>
   deleteCredential: (credentialId: string) => Promise<{ ok: boolean }>
-  getNodesState: () => Promise<NodeModuleState>
-  saveNode: (input: NodeSaveInput) => Promise<NodeRecord>
-  deleteNode: (nodeId: string) => Promise<{ ok: boolean }>
-  convertNodeText: (input: string) => Promise<NodeConversionResult>
-  fetchNodeSubscription: (input: string) => Promise<NodeSubscriptionFetchResult>
-  validateConvertedNodes: (input: string) => Promise<NodeValidationResult[]>
   getHttpCollectionsState: () => Promise<HttpCollectionModuleState>
   saveHttpCollection: (input: HttpCollectionSaveInput) => Promise<HttpCollection>
   saveHttpRequest: (input: HttpRequestSaveInput) => Promise<HttpRequestRecord>

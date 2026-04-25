@@ -1,8 +1,66 @@
 #!/usr/bin/env node
 
+import { access } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 const PROMPT = '只回复 DOGGY_AI_SMOKE_OK，不要调用工具，不要修改文件。'
 const EXPECTED = 'DOGGY_AI_SMOKE_OK'
 const TIMEOUT_MS = 60_000
+
+const DEFAULT_RUNTIME_ROOT = join(
+  homedir(),
+  'Library',
+  'Application Support',
+  'doggy-toolbox-web',
+  'ai-runtimes'
+)
+
+async function pathExists(path) {
+  try {
+    await access(path, constants.R_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function resolveRuntimeImport(provider) {
+  const runtimeRoot = process.env.DOGGY_AI_RUNTIME_ROOT || DEFAULT_RUNTIME_ROOT
+  const target =
+    provider === 'codex'
+      ? {
+          label: 'Codex SDK',
+          path: join(
+            runtimeRoot,
+            'codex-sdk',
+            'node_modules',
+            '@openai',
+            'codex-sdk',
+            'dist',
+            'index.js'
+          )
+        }
+      : {
+          label: 'Claude Agent SDK',
+          path: join(
+            runtimeRoot,
+            'claude-agent-sdk',
+            'node_modules',
+            '@anthropic-ai',
+            'claude-agent-sdk',
+            'sdk.mjs'
+          )
+        }
+
+  if (!(await pathExists(target.path))) {
+    throw new Error(`${target.label} 尚未安装。请先在应用的 AI 设置页安装对应 runtime。`)
+  }
+
+  return pathToFileURL(target.path).href
+}
 
 function createTimeoutController() {
   const abortController = new AbortController()
@@ -34,7 +92,7 @@ function assertSmokeResult(provider, value, extra = {}) {
 }
 
 async function smokeCodex() {
-  const { Codex } = await import('@openai/codex-sdk')
+  const { Codex } = await import(await resolveRuntimeImport('codex'))
   const { signal, cleanup } = createTimeoutController()
 
   try {
@@ -59,7 +117,7 @@ async function smokeCodex() {
 }
 
 async function smokeClaude() {
-  const { query } = await import('@anthropic-ai/claude-agent-sdk')
+  const { query } = await import(await resolveRuntimeImport('claude'))
   const { abortController, cleanup } = createTimeoutController()
   const messages = []
 

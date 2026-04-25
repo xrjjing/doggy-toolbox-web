@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watch, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, watch, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NButton,
   NCard,
+  NDrawer,
+  NDrawerContent,
+  NIcon,
   NInput,
   NRadioButton,
   NRadioGroup,
@@ -13,24 +16,19 @@ import {
   NTag,
   useMessage
 } from 'naive-ui'
+import {
+  CodeSlashOutline,
+  CubeOutline,
+  GlobeOutline,
+  KeyOutline,
+  TimeOutline
+} from '@vicons/ionicons5'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
 import { useAiStore } from '@renderer/stores/ai'
-import { toolCatalog } from './catalog'
+import { toolCatalog, toolCategories } from './catalog'
 import { buildToolAiAssistPrompt } from './tool-ai-assist'
-import type { ToolKind, ToolPanelSnapshot } from './types'
+import type { ToolCategoryKey, ToolKind, ToolPanelSnapshot } from './types'
 import type { AiProviderKind, AiSessionPhase } from '@shared/ipc-contract'
-import CryptoToolPanel from './panels/CryptoToolPanel.vue'
-import DiffToolPanel from './panels/DiffToolPanel.vue'
-import DockerCommandGeneratorToolPanel from './panels/DockerCommandGeneratorToolPanel.vue'
-import DockerServiceCommandGeneratorToolPanel from './panels/DockerServiceCommandGeneratorToolPanel.vue'
-import DockerSwarmCommandGeneratorToolPanel from './panels/DockerSwarmCommandGeneratorToolPanel.vue'
-import GitCommandGeneratorToolPanel from './panels/GitCommandGeneratorToolPanel.vue'
-import ImageBase64ToolPanel from './panels/ImageBase64ToolPanel.vue'
-import MockToolPanel from './panels/MockToolPanel.vue'
-import NginxConfigGeneratorToolPanel from './panels/NginxConfigGeneratorToolPanel.vue'
-import QrCodeToolPanel from './panels/QrCodeToolPanel.vue'
-import RsaToolPanel from './panels/RsaToolPanel.vue'
-import WebSocketToolPanel from './panels/WebSocketToolPanel.vue'
 import {
   base64DecodeToTextUtf8,
   base64EncodeTextUtf8,
@@ -80,16 +78,41 @@ import {
   toKeyValueLines
 } from './utils/core-legacy'
 
+const QrCodeToolPanel = defineAsyncComponent(() => import('./panels/QrCodeToolPanel.vue'))
+const ImageBase64ToolPanel = defineAsyncComponent(() => import('./panels/ImageBase64ToolPanel.vue'))
+const MockToolPanel = defineAsyncComponent(() => import('./panels/MockToolPanel.vue'))
+const DiffToolPanel = defineAsyncComponent(() => import('./panels/DiffToolPanel.vue'))
+const CryptoToolPanel = defineAsyncComponent(() => import('./panels/CryptoToolPanel.vue'))
+const RsaToolPanel = defineAsyncComponent(() => import('./panels/RsaToolPanel.vue'))
+const WebSocketToolPanel = defineAsyncComponent(() => import('./panels/WebSocketToolPanel.vue'))
+const GitCommandGeneratorToolPanel = defineAsyncComponent(
+  () => import('./panels/GitCommandGeneratorToolPanel.vue')
+)
+const DockerCommandGeneratorToolPanel = defineAsyncComponent(
+  () => import('./panels/DockerCommandGeneratorToolPanel.vue')
+)
+const DockerServiceCommandGeneratorToolPanel = defineAsyncComponent(
+  () => import('./panels/DockerServiceCommandGeneratorToolPanel.vue')
+)
+const DockerSwarmCommandGeneratorToolPanel = defineAsyncComponent(
+  () => import('./panels/DockerSwarmCommandGeneratorToolPanel.vue')
+)
+const NginxConfigGeneratorToolPanel = defineAsyncComponent(
+  () => import('./panels/NginxConfigGeneratorToolPanel.vue')
+)
+
 const message = useMessage()
 const route = useRoute()
 const aiSettingsStore = useAiSettingsStore()
 const aiStore = useAiStore()
 const activeTool = ref<ToolKind>('base64')
+const activeCategory = ref<ToolCategoryKey>('encoding-format')
 const input = ref('')
 const output = ref('')
 const extra = ref('')
 const hashAlgorithm = ref<'md5' | 'sha256'>('md5')
 const aiProvider = ref<AiProviderKind>('codex')
+const toolPickerVisible = ref(false)
 const advancedPanelTools = new Set<ToolKind>([
   'qrcode',
   'img-base64',
@@ -111,7 +134,23 @@ const panelSnapshot = ref<ToolPanelSnapshot>({
 })
 
 const activeDefinition = computed(() => toolCatalog.find((tool) => tool.key === activeTool.value)!)
-const toolOptions = toolCatalog.map((tool) => ({ label: tool.title, value: tool.key }))
+const categoryIcons = {
+  'encoding-format': CodeSlashOutline,
+  'security-crypto': KeyOutline,
+  'text-content': CubeOutline,
+  'network-protocol': GlobeOutline,
+  'time-data-devops': TimeOutline
+} satisfies Record<ToolCategoryKey, typeof CodeSlashOutline>
+const groupedTools = computed(() =>
+  toolCategories.map((category) => ({
+    ...category,
+    tools: toolCatalog.filter((tool) => tool.category === category.key)
+  }))
+)
+const activeCategoryMeta = computed(
+  () => groupedTools.value.find((group) => group.key === activeCategory.value) ?? groupedTools.value[0]
+)
+const activeCategoryTools = computed(() => activeCategoryMeta.value?.tools ?? [])
 const aiProviderLabel = computed(() =>
   aiProvider.value === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
 )
@@ -138,6 +177,11 @@ function updatePanelSnapshot(snapshot: ToolPanelSnapshot): void {
   panelSnapshot.value = snapshot
 }
 
+function selectTool(tool: ToolKind): void {
+  activeTool.value = tool
+  toolPickerVisible.value = false
+}
+
 /**
  * 全局搜索会通过 `/tools?tool=xxx` 直达具体工具。
  * 这里把路由参数同步成 activeTool，避免旧项目“搜索结果跳页面”的体验在 Vue 版里丢失。
@@ -147,6 +191,8 @@ function syncToolFromRoute(): void {
   const tool = typeof target === 'string' ? target : ''
   if (toolCatalog.some((item) => item.key === tool)) {
     activeTool.value = tool as ToolKind
+    activeCategory.value =
+      toolCatalog.find((item) => item.key === tool)?.category ?? activeCategory.value
   }
 }
 
@@ -453,167 +499,217 @@ onBeforeUnmount(() => {
 })
 
 watch(() => route.query.tool, syncToolFromRoute, { immediate: true })
+watch(activeCategory, (category) => {
+  toolPickerVisible.value = false
+  if (!activeCategoryTools.value.some((tool) => tool.key === activeTool.value)) {
+    activeTool.value =
+      groupedTools.value.find((group) => group.key === category)?.tools[0]?.key ?? activeTool.value
+  }
+})
 </script>
 
 <template>
-  <section class="page-heading">
-    <p class="eyebrow">phase 1</p>
-    <h2>纯前端工具工作台</h2>
-    <p>这里承接首批不依赖 Python 的工具算法迁移。当前先做统一工作台，后续再拆独立页面。</p>
-  </section>
-
   <div class="tool-workbench">
-    <NCard class="soft-card workbench-nav" :bordered="false">
-      <template #header>首批工具</template>
-      <div class="tool-nav-list">
+    <NCard class="soft-card workbench-categories" :bordered="false">
+      <template #header>工具分类</template>
+      <div class="tool-category-list">
         <button
-          v-for="tool in toolCatalog"
-          :key="tool.key"
-          class="tool-nav-item"
-          :class="{ active: tool.key === activeTool }"
+          v-for="group in groupedTools"
+          :key="group.key"
+          class="tool-category-tab"
+          :class="{ active: group.key === activeCategory }"
           type="button"
-          @click="activeTool = tool.key"
+          @click="activeCategory = group.key"
         >
-          <div>
-            <strong>{{ tool.title }}</strong>
-            <p>{{ tool.description }}</p>
+          <div class="tool-category-icon">
+            <NIcon :component="categoryIcons[group.key]" />
           </div>
-          <NTag size="small" :bordered="false">{{ tool.accent }}</NTag>
+          <div>
+            <strong>{{ group.label }}</strong>
+            <p>{{ group.tools.length }} 个工具</p>
+          </div>
         </button>
       </div>
     </NCard>
 
-    <NCard class="soft-card workbench-main" :bordered="false">
-      <template #header>
-        <div class="card-title-row">
-          <span>{{ activeDefinition.title }}</span>
-          <NSelect
-            v-model:value="activeTool"
-            :options="toolOptions"
-            size="small"
-            class="tool-select"
-          />
-        </div>
-      </template>
-
-      <NSpace vertical size="large">
-        <p class="muted">{{ activeDefinition.description }}</p>
-
-        <NSelect
-          v-if="activeTool === 'hash'"
-          v-model:value="hashAlgorithm"
-          :options="[
-            { label: 'MD5', value: 'md5' },
-            { label: 'SHA-256', value: 'sha256' }
-          ]"
-        />
-
-        <template v-if="!usesAdvancedPanel">
-          <NInput
-            v-model:value="input"
-            type="textarea"
-            :autosize="{ minRows: 6, maxRows: 12 }"
-            placeholder="输入内容，点击“运行工具”查看结果"
-          />
-
-          <div class="action-row">
-            <NButton type="primary" @click="runTool">运行工具</NButton>
-            <NButton secondary @click="fillExample">填充示例</NButton>
-            <NButton tertiary @click="clearTool">清空</NButton>
-          </div>
-
-          <div class="tool-output-grid">
-            <section>
-              <p class="eyebrow">result</p>
-              <pre class="stream-output">{{ output || '等待运行结果...' }}</pre>
-            </section>
-            <section>
-              <p class="eyebrow">extra</p>
-              <pre class="stream-output">{{ extra || '这里显示校验、预览或反向结果...' }}</pre>
-            </section>
+    <div class="tool-workbench-shell">
+      <NCard class="soft-card workbench-main" :bordered="false">
+        <template #header>
+          <div class="tool-workbench-header">
+            <div class="tool-workbench-title">
+              <strong>{{ activeDefinition.title }}</strong>
+              <p>{{ activeCategoryMeta.label }} · {{ activeCategoryMeta.description }}</p>
+            </div>
+            <div class="workbench-header-actions">
+              <NTag size="small" :bordered="false">{{ activeCategoryTools.length }} 个工具</NTag>
+              <NButton secondary round class="workbench-drawer-trigger" @click="toolPickerVisible = true">
+                切换工具
+              </NButton>
+            </div>
           </div>
         </template>
 
-        <QrCodeToolPanel v-else-if="activeTool === 'qrcode'" @snapshot="updatePanelSnapshot" />
-        <ImageBase64ToolPanel
-          v-else-if="activeTool === 'img-base64'"
-          @snapshot="updatePanelSnapshot"
-        />
-        <MockToolPanel v-else-if="activeTool === 'mock'" @snapshot="updatePanelSnapshot" />
-        <DiffToolPanel v-else-if="activeTool === 'diff'" @snapshot="updatePanelSnapshot" />
-        <CryptoToolPanel v-else-if="activeTool === 'crypto'" @snapshot="updatePanelSnapshot" />
-        <RsaToolPanel v-else-if="activeTool === 'rsa'" @snapshot="updatePanelSnapshot" />
-        <WebSocketToolPanel
-          v-else-if="activeTool === 'websocket'"
-          @snapshot="updatePanelSnapshot"
-        />
-        <GitCommandGeneratorToolPanel
-          v-else-if="activeTool === 'git'"
-          @snapshot="updatePanelSnapshot"
-        />
-        <DockerCommandGeneratorToolPanel
-          v-else-if="activeTool === 'docker'"
-          @snapshot="updatePanelSnapshot"
-        />
-        <DockerServiceCommandGeneratorToolPanel
-          v-else-if="activeTool === 'docker-service'"
-          @snapshot="updatePanelSnapshot"
-        />
-        <DockerSwarmCommandGeneratorToolPanel
-          v-else-if="activeTool === 'docker-swarm'"
-          @snapshot="updatePanelSnapshot"
-        />
-        <NginxConfigGeneratorToolPanel
-          v-else-if="activeTool === 'nginx'"
-          @snapshot="updatePanelSnapshot"
-        />
-
-        <section class="tool-ai-assist">
-          <div class="card-title-row">
-            <div>
-              <p class="eyebrow">local ai assist</p>
-              <h3>AI 结果复核</h3>
+        <NSpace vertical size="large">
+          <section class="tool-current-overview">
+            <div class="tool-current-copy">
+              <p class="eyebrow">current tool</p>
+              <strong>{{ activeDefinition.title }}</strong>
+              <p>{{ activeDefinition.description }}</p>
             </div>
-            <NTag size="small" :bordered="false">本机 SDK</NTag>
-          </div>
+            <div class="tool-current-meta">
+              <NTag size="small" :bordered="false">{{ activeCategoryMeta.label }}</NTag>
+              <NTag size="small" :bordered="false">{{ activeDefinition.accent }}</NTag>
+            </div>
+          </section>
 
-          <p class="muted">
-            把当前工具名、输入、result 和 extra 组织成 prompt，交给本机 Codex / Claude Code SDK
-            做结果解释、异常判断和下一步建议。
-          </p>
+          <NSelect
+            v-if="activeTool === 'hash'"
+            v-model:value="hashAlgorithm"
+            :options="[
+              { label: 'MD5', value: 'md5' },
+              { label: 'SHA-256', value: 'sha256' }
+            ]"
+          />
 
-          <div class="tool-ai-toolbar">
-            <NRadioGroup v-model:value="aiProvider">
-              <NRadioButton value="codex">Codex SDK</NRadioButton>
-              <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
-            </NRadioGroup>
+          <template v-if="!usesAdvancedPanel">
+            <NInput
+              v-model:value="input"
+              type="textarea"
+              :autosize="{ minRows: 6, maxRows: 12 }"
+              placeholder="输入内容，点击“运行工具”查看结果"
+            />
+
             <div class="action-row">
-              <NButton
-                type="primary"
-                :loading="aiStore.running"
-                :disabled="!aiSettingsStore.isFeatureEnabled('tools')"
-                @click="startAiAssist"
-              >
-                让 {{ aiProviderLabel }} 分析
-              </NButton>
-              <NButton secondary :disabled="!aiStore.running" @click="cancelAiAssist">
-                取消
-              </NButton>
+              <NButton type="primary" @click="runTool">运行工具</NButton>
+              <NButton secondary @click="fillExample">填充示例</NButton>
+              <NButton tertiary @click="clearTool">清空</NButton>
             </div>
+
+            <div class="tool-output-grid">
+              <section>
+                <p class="eyebrow">result</p>
+                <pre class="stream-output">{{ output || '等待运行结果...' }}</pre>
+              </section>
+              <section>
+                <p class="eyebrow">extra</p>
+                <pre class="stream-output">{{ extra || '这里显示校验、预览或反向结果...' }}</pre>
+              </section>
+            </div>
+          </template>
+
+          <QrCodeToolPanel v-else-if="activeTool === 'qrcode'" @snapshot="updatePanelSnapshot" />
+          <ImageBase64ToolPanel
+            v-else-if="activeTool === 'img-base64'"
+            @snapshot="updatePanelSnapshot"
+          />
+          <MockToolPanel v-else-if="activeTool === 'mock'" @snapshot="updatePanelSnapshot" />
+          <DiffToolPanel v-else-if="activeTool === 'diff'" @snapshot="updatePanelSnapshot" />
+          <CryptoToolPanel v-else-if="activeTool === 'crypto'" @snapshot="updatePanelSnapshot" />
+          <RsaToolPanel v-else-if="activeTool === 'rsa'" @snapshot="updatePanelSnapshot" />
+          <WebSocketToolPanel
+            v-else-if="activeTool === 'websocket'"
+            @snapshot="updatePanelSnapshot"
+          />
+          <GitCommandGeneratorToolPanel
+            v-else-if="activeTool === 'git'"
+            @snapshot="updatePanelSnapshot"
+          />
+          <DockerCommandGeneratorToolPanel
+            v-else-if="activeTool === 'docker'"
+            @snapshot="updatePanelSnapshot"
+          />
+          <DockerServiceCommandGeneratorToolPanel
+            v-else-if="activeTool === 'docker-service'"
+            @snapshot="updatePanelSnapshot"
+          />
+          <DockerSwarmCommandGeneratorToolPanel
+            v-else-if="activeTool === 'docker-swarm'"
+            @snapshot="updatePanelSnapshot"
+          />
+          <NginxConfigGeneratorToolPanel
+            v-else-if="activeTool === 'nginx'"
+            @snapshot="updatePanelSnapshot"
+          />
+
+          <section class="tool-ai-assist">
+            <div class="card-title-row">
+              <div>
+                <p class="eyebrow">local ai assist</p>
+                <h3>AI 结果复核</h3>
+              </div>
+              <NTag size="small" :bordered="false">本机 SDK</NTag>
+            </div>
+
+            <p class="muted">
+              把当前工具名、输入、result 和 extra 组织成 prompt，交给本机 Codex / Claude Code SDK
+              做结果解释、异常判断和下一步建议。
+            </p>
+
+            <div class="tool-ai-toolbar">
+              <NRadioGroup v-model:value="aiProvider">
+                <NRadioButton value="codex">Codex SDK</NRadioButton>
+                <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
+              </NRadioGroup>
+              <div class="action-row">
+                <NButton
+                  type="primary"
+                  :loading="aiStore.running"
+                  :disabled="!aiSettingsStore.isFeatureEnabled('tools')"
+                  @click="startAiAssist"
+                >
+                  让 {{ aiProviderLabel }} 分析
+                </NButton>
+                <NButton secondary :disabled="!aiStore.running" @click="cancelAiAssist">
+                  取消
+                </NButton>
+              </div>
+            </div>
+
+            <div v-if="aiStore.activeSession" class="ai-runtime-grid">
+              <NStatistic label="提供方" :value="aiStore.activeSession.provider" />
+              <NStatistic label="阶段" :value="aiPhaseLabel" />
+              <NStatistic label="模型" :value="aiStore.runtime?.model || '跟随本机配置'" />
+              <NStatistic label="输出 Tokens" :value="aiStore.usage?.outputTokens ?? 0" />
+            </div>
+
+            <pre class="stream-output tool-ai-output">{{
+              aiStore.output || '等待 AI 分析。会话会同步保存到 AI SDK Bridge 验证台。'
+            }}</pre>
+          </section>
+        </NSpace>
+      </NCard>
+    </div>
+
+    <NDrawer v-model:show="toolPickerVisible" class="workbench-drawer" placement="right" :width="380">
+      <NDrawerContent closable title="切换工具">
+        <div class="tool-subnav-section">
+          <div class="tool-subnav-head">
+            <p class="eyebrow">current category</p>
+            <div class="tool-workbench-title">
+              <strong>{{ activeCategoryMeta.label }}</strong>
+              <p>{{ activeCategoryMeta.description }}</p>
+            </div>
+            <p class="tool-drawer-hint">点击工具后立即切换，并自动收起抽屉。</p>
           </div>
 
-          <div v-if="aiStore.activeSession" class="ai-runtime-grid">
-            <NStatistic label="提供方" :value="aiStore.activeSession.provider" />
-            <NStatistic label="阶段" :value="aiPhaseLabel" />
-            <NStatistic label="模型" :value="aiStore.runtime?.model || '跟随本机配置'" />
-            <NStatistic label="输出 Tokens" :value="aiStore.usage?.outputTokens ?? 0" />
+          <div class="tool-nav-list tool-drawer-list">
+            <button
+              v-for="tool in activeCategoryTools"
+              :key="tool.key"
+              class="tool-nav-item"
+              :class="{ active: tool.key === activeTool }"
+              type="button"
+              @click="selectTool(tool.key)"
+            >
+              <div>
+                <strong>{{ tool.title }}</strong>
+                <p>{{ tool.description }}</p>
+              </div>
+              <NTag size="small" :bordered="false">{{ tool.accent }}</NTag>
+            </button>
           </div>
-
-          <pre class="stream-output tool-ai-output">{{
-            aiStore.output || '等待 AI 分析。会话会同步保存到 AI SDK Bridge 验证台。'
-          }}</pre>
-        </section>
-      </NSpace>
-    </NCard>
+        </div>
+      </NDrawerContent>
+    </NDrawer>
   </div>
 </template>

@@ -14,12 +14,13 @@
     "test": "vitest run",
     "smoke:ai": "node scripts/smoke-local-ai-sdk.mjs",
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "dev:debug": "electron-vite dev --debug --inspect=9229 --remoteDebuggingPort=9222 --sourcemap",
+    "build": "pnpm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:win": "npm run build && electron-builder --win",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:unpack": "pnpm run build && electron-builder --dir",
+    "build:mac": "pnpm run build && electron-builder --mac",
+    "build:win": "pnpm run build && electron-builder --win",
+    "build:linux": "pnpm run build && electron-builder --linux"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -28,14 +29,8 @@
     ]
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.117",
     "@electron-toolkit/utils": "^4.0.0",
-    "@openai/codex-sdk": "^0.122.0",
-    "@types/qrcode-generator": "^0.0.16",
     "@vicons/ionicons5": "^0.13.0",
-    "dayjs": "^1.11.19",
-    "electron-updater": "^6.6.2",
-    "lodash-es": "^4.17.21",
     "naive-ui": "^2.44.1",
     "pinia": "^3.0.4",
     "qrcode-generator": "^2.0.4",
@@ -46,8 +41,8 @@
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/tsconfig": "^1.0.1",
-    "@types/lodash-es": "^4.17.12",
     "@types/node": "^24.10.1",
+    "@types/qrcode-generator": "^0.0.16",
     "@vitejs/plugin-vue": "^6.0.2",
     "@vue/eslint-config-typescript": "^14.6.0",
     "electron": "^39.2.7",
@@ -70,7 +65,8 @@
     },
     "files": [
       "out/**/*",
-      "resources/**/*"
+      "resources/**/*",
+      "!resources/runtime-installers{,/**/*}"
     ],
     "extraMetadata": {
       "main": "out/main/index.js"
@@ -81,14 +77,32 @@
         "dmg",
         "zip"
       ],
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.png",
+      "extraResources": [
+        {
+          "from": "resources/runtime-installers/darwin-arm64",
+          "to": "runtime-installers/darwin-arm64",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "win": {
       "target": [
         "nsis",
         "zip"
       ],
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.png",
+      "extraResources": [
+        {
+          "from": "resources/runtime-installers/win32-x64",
+          "to": "runtime-installers/win32-x64",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -98,5 +112,6 @@
       "category": "Development",
       "icon": "resources/icon.png"
     }
-  }
+  },
+  "packageManager": "pnpm@10.33.1+sha512.05ba3c1d5d1c18f68df06470d74055e62d41fc110a0c660db1b2dfb2785327f04cf0f68345d4609bc52089e7fa0343c31593b2f9594e2c5d5da426230acc9820"
 }

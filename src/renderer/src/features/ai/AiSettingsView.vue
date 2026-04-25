@@ -50,10 +50,9 @@ const featureGroups: FeatureGroup[] = [
   },
   {
     key: 'network',
-    label: '网络与节点',
+    label: '网络模块',
     items: [
-      { id: 'http', label: 'HTTP 集合请求分析' },
-      { id: 'nodes', label: '节点资料解释' }
+      { id: 'http', label: 'HTTP 集合请求分析' }
     ]
   }
 ]

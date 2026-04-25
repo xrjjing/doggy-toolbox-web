@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { NButton, NCard, NCheckbox, NModal, NSelect, NSlider, NSpace, NTag } from 'naive-ui'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { NCheckbox, NInputNumber, NSelect, NSlider, NTag } from 'naive-ui'
 import {
   appThemeOptions,
   cloneAppearance,
   defaultAppearance,
+  mapUiScaleDisplayPercent,
+  resolveUiScaleDisplayPercent,
   titlebarModeOptions,
   type AppAppearance
 } from '@renderer/stores/app'
@@ -14,12 +16,10 @@ import {
  * 这里不直接操作 localStorage，而是把草稿变化通过 emit 交给 AppShell 驱动 store 预览与提交。
  */
 const props = defineProps<{
-  show: boolean
   appearance: AppAppearance
 }>()
 
 const emit = defineEmits<{
-  'update:show': [value: boolean]
   preview: [appearance: AppAppearance]
   save: [appearance: AppAppearance]
   cancel: []
@@ -36,12 +36,12 @@ const draft = ref<AppAppearance>(cloneAppearance(props.appearance))
 const isDirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(original.value))
 
 watch(
-  () => props.show,
-  (visible) => {
-    if (!visible) return
-    original.value = cloneAppearance(props.appearance)
-    draft.value = cloneAppearance(props.appearance)
-  }
+  () => props.appearance,
+  (appearance) => {
+    original.value = cloneAppearance(appearance)
+    draft.value = cloneAppearance(appearance)
+  },
+  { deep: true }
 )
 
 /**
@@ -58,30 +58,47 @@ function patchDraft(patch: Partial<AppAppearance>): void {
 
 function closeWithRestore(): void {
   emit('cancel')
-  emit('update:show', false)
 }
 
 function saveDraft(): void {
   emit('save', cloneAppearance(draft.value))
-  emit('update:show', false)
+}
+
+function updateGlassOpacity(value: number | null): void {
+  if (value == null) return
+  patchDraft({ glassOpacity: Number(value) })
+}
+
+function updateUiScale(value: number | null): void {
+  if (value == null) return
+  patchDraft({ uiScale: resolveUiScaleDisplayPercent(Number(value)) })
 }
 
 function resetDraft(): void {
   draft.value = cloneAppearance(defaultAppearance)
   emit('preview', cloneAppearance(draft.value))
 }
+
+function handleWindowKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeWithRestore()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleWindowKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleWindowKeydown)
+})
 </script>
 
 <template>
-  <NModal
-    :show="show"
-    class="appearance-settings-modal"
-    @mask-click="closeWithRestore"
-    @esc="closeWithRestore"
-    @update:show="(value) => (value ? emit('update:show', value) : closeWithRestore())"
-  >
-    <NCard :bordered="false" closable @close="closeWithRestore">
-      <template #header>
+  <div class="appearance-settings-backdrop" @click.self="closeWithRestore">
+    <section class="appearance-settings-modal" role="dialog" aria-modal="true" aria-label="外观设置">
+      <header class="appearance-settings-header">
         <div class="card-title-row">
           <div>
             <p class="eyebrow">appearance modal</p>
@@ -91,71 +108,123 @@ function resetDraft(): void {
             {{ isDirty ? '有未保存修改' : '已同步' }}
           </NTag>
         </div>
-      </template>
+        <button
+          class="appearance-settings-close"
+          type="button"
+          @click="closeWithRestore"
+        >
+          ×
+        </button>
+      </header>
 
-      <p class="muted">
-        这里补回旧项目的设置弹窗体验：修改时先预览，保存后才持久化；直接关闭会恢复到打开前的状态。
-      </p>
+      <div class="appearance-settings-body">
+        <p class="muted">
+          这里补回旧项目的设置弹窗体验：修改时先预览，保存后才持久化；直接关闭会恢复到打开前的状态。
+        </p>
 
-      <section class="appearance-modal-section">
-        <label class="appearance-modal-label">主题</label>
-        <NSelect
-          :value="draft.theme"
-          :options="appThemeOptions"
-          @update:value="(theme) => patchDraft({ theme })"
-        />
-      </section>
+        <section class="appearance-modal-section">
+          <label class="appearance-modal-label">主题</label>
+          <NSelect
+            :value="draft.theme"
+            :options="appThemeOptions"
+            @update:value="(theme) => patchDraft({ theme })"
+          />
+        </section>
 
-      <section class="appearance-modal-section">
-        <div class="appearance-modal-inline">
-          <label class="appearance-modal-label">毛玻璃</label>
-          <NCheckbox
-            :checked="draft.glassMode"
-            @update:checked="(glassMode) => patchDraft({ glassMode })"
+        <section class="appearance-modal-section">
+          <div class="appearance-modal-inline">
+            <label class="appearance-modal-label">毛玻璃</label>
+            <NCheckbox
+              :checked="draft.glassMode"
+              @update:checked="(glassMode) => patchDraft({ glassMode })"
+            >
+              启用毛玻璃效果
+            </NCheckbox>
+          </div>
+          <div class="appearance-modal-slider">
+            <div class="appearance-modal-slider-head">
+              <span>透明度 {{ draft.glassOpacity }}%</span>
+              <NInputNumber
+                :value="draft.glassOpacity"
+                size="small"
+                :min="45"
+                :max="95"
+                :step="5"
+                :precision="0"
+                :disabled="!draft.glassMode"
+                @update:value="updateGlassOpacity"
+              />
+            </div>
+            <NSlider
+              :value="draft.glassOpacity"
+              :min="45"
+              :max="95"
+              :step="5"
+              :disabled="!draft.glassMode"
+              @update:value="(glassOpacity) => patchDraft({ glassOpacity })"
+            />
+          </div>
+        </section>
+
+        <section class="appearance-modal-section">
+          <div class="appearance-modal-slider">
+            <div class="appearance-modal-slider-head">
+              <span>UI 缩放 {{ mapUiScaleDisplayPercent(draft.uiScale) }}%</span>
+              <NInputNumber
+                :value="mapUiScaleDisplayPercent(draft.uiScale)"
+                size="small"
+                :min="82"
+                :max="112"
+                :step="1"
+                :precision="0"
+                @update:value="updateUiScale"
+              />
+            </div>
+            <NSlider
+              :value="mapUiScaleDisplayPercent(draft.uiScale)"
+              :min="82"
+              :max="112"
+              :step="1"
+              @update:value="(uiScale) => patchDraft({ uiScale: resolveUiScaleDisplayPercent(uiScale) })"
+            />
+          </div>
+        </section>
+
+        <section class="appearance-modal-section">
+          <label class="appearance-modal-label">标题栏视觉模式</label>
+          <NSelect
+            :value="draft.titlebarMode"
+            :options="titlebarModeOptions"
+            @update:value="(titlebarMode) => patchDraft({ titlebarMode })"
+          />
+        </section>
+
+        <div class="appearance-actions">
+          <button
+            class="appearance-action-button is-tertiary is-left"
+            type="button"
+            @click="resetDraft"
           >
-            启用毛玻璃效果
-          </NCheckbox>
+            恢复默认
+          </button>
+          <button
+            class="appearance-action-button is-secondary"
+            type="button"
+            @click="closeWithRestore"
+          >
+            取消并恢复
+          </button>
+          <button
+            class="appearance-action-button is-primary"
+            :class="{ 'is-disabled': !isDirty }"
+            type="button"
+            :disabled="!isDirty"
+            @click="saveDraft"
+          >
+            保存设置
+          </button>
         </div>
-        <div class="appearance-modal-slider">
-          <span>透明度 {{ draft.glassOpacity }}%</span>
-          <NSlider
-            :value="draft.glassOpacity"
-            :min="45"
-            :max="95"
-            :step="5"
-            :disabled="!draft.glassMode"
-            @update:value="(glassOpacity) => patchDraft({ glassOpacity })"
-          />
-        </div>
-      </section>
-
-      <section class="appearance-modal-section">
-        <div class="appearance-modal-slider">
-          <span>UI 缩放 {{ draft.uiScale }}%</span>
-          <NSlider
-            :value="draft.uiScale"
-            :min="50"
-            :max="100"
-            :step="5"
-            @update:value="(uiScale) => patchDraft({ uiScale })"
-          />
-        </div>
-      </section>
-
-      <section class="appearance-modal-section">
-        <label class="appearance-modal-label">标题栏视觉模式</label>
-        <NSelect
-          :value="draft.titlebarMode"
-          :options="titlebarModeOptions"
-          @update:value="(titlebarMode) => patchDraft({ titlebarMode })"
-        />
-      </section>
-
-      <NSpace justify="end">
-        <NButton tertiary @click="resetDraft">恢复默认</NButton>
-        <NButton secondary @click="closeWithRestore">取消并恢复</NButton>
-        <NButton type="primary" :disabled="!isDirty" @click="saveDraft">保存设置</NButton>
-      </NSpace>
-    </NCard>
-  </NModal>
+      </div>
+    </section>
+  </div>
 </template>

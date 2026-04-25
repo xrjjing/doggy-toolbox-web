@@ -168,6 +168,8 @@ type ApifoxParameter = {
   enabled?: boolean
 }
 
+export type CurlCodeLanguage = 'fetch' | 'axios' | 'python' | 'node' | 'php' | 'go'
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
@@ -544,6 +546,319 @@ function authHeader(auth: HttpAuth): string {
   return ''
 }
 
+function jsonLikeBodyText(request: HttpRequestRecord): string | null {
+  if (!request.body.content) return null
+
+  if (request.body.type === 'json') {
+    try {
+      return JSON.stringify(JSON.parse(request.body.content), null, 2)
+    } catch {
+      return request.body.content
+    }
+  }
+
+  return null
+}
+
+function effectiveHeaders(request: HttpRequestRecord): HttpKeyValue[] {
+  const headers = [...enabledKeyValues(request.headers)]
+  const auth = authHeader(request.auth)
+  if (auth) headers.push(createKeyValue('Authorization', auth) as HttpKeyValue)
+  return headers
+}
+
+function effectiveUrl(request: HttpRequestRecord): string {
+  const url = request.url || ''
+  const params = enabledKeyValues(request.params)
+  if (params.length === 0) return url
+
+  try {
+    const parsed = new URL(url)
+    for (const param of params) {
+      parsed.searchParams.set(param.key, param.value)
+    }
+    return parsed.toString()
+  } catch {
+    const search = new URLSearchParams(params.map((item) => [item.key, item.value])).toString()
+    if (!search) return url
+    return url.includes('?') ? `${url}&${search}` : `${url}?${search}`
+  }
+}
+
+function languageLabel(language: CurlCodeLanguage): string {
+  const labels: Record<CurlCodeLanguage, string> = {
+    fetch: 'Fetch',
+    axios: 'Axios',
+    python: 'Python requests',
+    node: 'Node.js https',
+    php: 'PHP cURL',
+    go: 'Go net/http'
+  }
+  return labels[language]
+}
+
+function objectLiteralFromHeaders(headers: HttpKeyValue[]): string {
+  if (headers.length === 0) return '{}'
+  const lines = headers.map(
+    (header) => `  ${JSON.stringify(header.key)}: ${JSON.stringify(header.value)}`
+  )
+  return `{\n${lines.join(',\n')}\n}`
+}
+
+function pythonHeadersDict(headers: HttpKeyValue[]): string {
+  if (headers.length === 0) return '{}'
+  const lines = headers.map(
+    (header) => `    ${JSON.stringify(header.key)}: ${JSON.stringify(header.value)}`
+  )
+  return `{\n${lines.join(',\n')}\n}`
+}
+
+function phpHeadersArray(headers: HttpKeyValue[]): string {
+  if (headers.length === 0) return '[]'
+  const lines = headers.map((header) => `    ${JSON.stringify(`${header.key}: ${header.value}`)}`)
+  return `[\n${lines.join(',\n')}\n]`
+}
+
+function goHeadersBlock(headers: HttpKeyValue[]): string {
+  return headers
+    .map(
+      (header) => `req.Header.Set(${JSON.stringify(header.key)}, ${JSON.stringify(header.value)})`
+    )
+    .join('\n')
+}
+
+function bodyExpressionForFetch(request: HttpRequestRecord): string {
+  if (!request.body.content || request.method === 'GET' || request.method === 'HEAD') return ''
+
+  const jsonBody = jsonLikeBodyText(request)
+  if (jsonBody) {
+    return `,\n  body: JSON.stringify(${jsonBody})`
+  }
+
+  return `,\n  body: ${JSON.stringify(request.body.content)}`
+}
+
+function axiosDataExpression(request: HttpRequestRecord): string {
+  if (!request.body.content || request.method === 'GET' || request.method === 'HEAD') return ''
+
+  const jsonBody = jsonLikeBodyText(request)
+  if (jsonBody) {
+    return `,\n  data: ${jsonBody}`
+  }
+
+  return `,\n  data: ${JSON.stringify(request.body.content)}`
+}
+
+function pythonDataBlock(request: HttpRequestRecord): string {
+  if (!request.body.content || request.method === 'GET' || request.method === 'HEAD') return ''
+
+  const jsonBody = jsonLikeBodyText(request)
+  if (jsonBody) {
+    return `json=${jsonBody}`
+  }
+
+  return `data=${JSON.stringify(request.body.content)}`
+}
+
+function nodeRequestBodyBlock(request: HttpRequestRecord): {
+  bodyVariable: string
+  content: string
+} {
+  if (!request.body.content || request.method === 'GET' || request.method === 'HEAD') {
+    return { bodyVariable: '', content: '' }
+  }
+
+  const jsonBody = jsonLikeBodyText(request)
+  if (jsonBody) {
+    return {
+      bodyVariable: 'const body = JSON.stringify(payload)\n',
+      content: `const payload = ${jsonBody}\n`
+    }
+  }
+
+  return {
+    bodyVariable: 'const body = rawBody\n',
+    content: `const rawBody = ${JSON.stringify(request.body.content)}\n`
+  }
+}
+
+function bodyStringValue(request: HttpRequestRecord): string {
+  const jsonBody = jsonLikeBodyText(request)
+  if (jsonBody) {
+    return JSON.stringify(JSON.stringify(JSON.parse(request.body.content)))
+  }
+  return JSON.stringify(request.body.content)
+}
+
+function bodyAsGoReader(request: HttpRequestRecord): string {
+  if (!request.body.content || request.method === 'GET' || request.method === 'HEAD') {
+    return 'nil'
+  }
+
+  const jsonBody = jsonLikeBodyText(request)
+  if (jsonBody) {
+    return `bytes.NewBuffer([]byte(${JSON.stringify(JSON.stringify(JSON.parse(request.body.content)))}))`
+  }
+
+  return `strings.NewReader(${JSON.stringify(request.body.content)})`
+}
+
+function exportRequestAsFetch(request: HttpRequestRecord): string {
+  const url = effectiveUrl(request)
+  const headers = objectLiteralFromHeaders(effectiveHeaders(request))
+  return [
+    `const response = await fetch(${JSON.stringify(url)}, {`,
+    `  method: ${JSON.stringify(request.method)},`,
+    `  headers: ${headers}${bodyExpressionForFetch(request)}`,
+    '})',
+    '',
+    'const text = await response.text()',
+    'console.log(response.status, text)'
+  ].join('\n')
+}
+
+function exportRequestAsAxios(request: HttpRequestRecord): string {
+  const url = effectiveUrl(request)
+  const headers = objectLiteralFromHeaders(effectiveHeaders(request))
+  return [
+    "import axios from 'axios'",
+    '',
+    'const response = await axios({',
+    `  method: ${JSON.stringify(request.method.toLowerCase())},`,
+    `  url: ${JSON.stringify(url)},`,
+    `  headers: ${headers}${axiosDataExpression(request)}`,
+    '})',
+    '',
+    'console.log(response.status, response.data)'
+  ].join('\n')
+}
+
+function exportRequestAsPython(request: HttpRequestRecord): string {
+  const url = effectiveUrl(request)
+  const headers = pythonHeadersDict(effectiveHeaders(request))
+  const payload = pythonDataBlock(request)
+  return [
+    'import requests',
+    '',
+    `url = ${JSON.stringify(url)}`,
+    `headers = ${headers}`,
+    '',
+    payload
+      ? `response = requests.request(${JSON.stringify(request.method)}, url, headers=headers, ${payload})`
+      : `response = requests.request(${JSON.stringify(request.method)}, url, headers=headers)`,
+    'print(response.status_code)',
+    'print(response.text)'
+  ].join('\n')
+}
+
+function exportRequestAsNode(request: HttpRequestRecord): string {
+  const url = effectiveUrl(request)
+  const headers = effectiveHeaders(request)
+  const body = nodeRequestBodyBlock(request)
+
+  return [
+    "import https from 'node:https'",
+    '',
+    `const url = new URL(${JSON.stringify(url)})`,
+    body.content ? body.content.trimEnd() : '',
+    body.bodyVariable ? body.bodyVariable.trimEnd() : '',
+    'const req = https.request(',
+    '  {',
+    `    protocol: url.protocol,`,
+    `    hostname: url.hostname,`,
+    `    port: url.port || undefined,`,
+    '    path: `${url.pathname}${url.search}`,',
+    `    method: ${JSON.stringify(request.method)},`,
+    `    headers: ${objectLiteralFromHeaders(headers)}`,
+    '  },',
+    '  (res) => {',
+    "    let data = ''",
+    "    res.on('data', (chunk) => (data += chunk))",
+    "    res.on('end', () => console.log(res.statusCode, data))",
+    '  }',
+    ')',
+    '',
+    "req.on('error', console.error)",
+    body.bodyVariable ? 'req.write(body)' : '',
+    'req.end()'
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+function exportRequestAsPhp(request: HttpRequestRecord): string {
+  const url = effectiveUrl(request)
+  const headers = phpHeadersArray(effectiveHeaders(request))
+  const body =
+    !request.body.content || request.method === 'GET' || request.method === 'HEAD'
+      ? ''
+      : `curl_setopt($ch, CURLOPT_POSTFIELDS, ${bodyStringValue(request)});\n`
+
+  return [
+    '<?php',
+    `$ch = curl_init(${JSON.stringify(url)});`,
+    '',
+    'curl_setopt_array($ch, [',
+    `    CURLOPT_CUSTOMREQUEST => ${JSON.stringify(request.method)},`,
+    '    CURLOPT_RETURNTRANSFER => true,',
+    `    CURLOPT_HTTPHEADER => ${headers},`,
+    ']);',
+    body.trimEnd(),
+    '$response = curl_exec($ch);',
+    '$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);',
+    'curl_close($ch);',
+    '',
+    'echo $status . PHP_EOL;',
+    'echo $response . PHP_EOL;'
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+function exportRequestAsGo(request: HttpRequestRecord): string {
+  const url = effectiveUrl(request)
+  const bodyReader = bodyAsGoReader(request)
+  const needsBytes = bodyReader.includes('bytes.NewBuffer')
+  const needsStrings = bodyReader.includes('strings.NewReader')
+  const imports = ['"fmt"', '"io"', '"net/http"']
+  if (needsBytes) imports.push('"bytes"')
+  if (needsStrings) imports.push('"strings"')
+
+  return [
+    'package main',
+    '',
+    'import (',
+    ...imports.map((item) => `    ${item}`),
+    ')',
+    '',
+    'func main() {',
+    `    req, err := http.NewRequest(${JSON.stringify(request.method)}, ${JSON.stringify(url)}, ${bodyReader})`,
+    '    if err != nil {',
+    '        panic(err)',
+    '    }',
+    effectiveHeaders(request).length > 0
+      ? `    ${goHeadersBlock(effectiveHeaders(request)).replace(/\n/g, '\n    ')}`
+      : '',
+    '    client := &http.Client{}',
+    '    resp, err := client.Do(req)',
+    '    if err != nil {',
+    '        panic(err)',
+    '    }',
+    '    defer resp.Body.Close()',
+    '',
+    '    body, err := io.ReadAll(resp.Body)',
+    '    if err != nil {',
+    '        panic(err)',
+    '    }',
+    '',
+    '    fmt.Println(resp.StatusCode)',
+    '    fmt.Println(string(body))',
+    '}'
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 function postmanUrlToString(value: PostmanRequest['url']): string {
   if (typeof value === 'string') return value
   return value?.raw ?? ''
@@ -826,6 +1141,31 @@ export function exportRequestAsHttpie(request: HttpRequestRecord): string {
   }
 
   return parts.join(' ')
+}
+
+/**
+ * cURL 解析页的代码生成入口。
+ * 旧项目会把同一条请求结构继续投影成多语言示例代码；
+ * 新仓复用 `HttpRequestRecord` 作为统一中间表示，避免再维护第二套请求模型。
+ */
+export function exportRequestAsCodeSnippet(
+  request: HttpRequestRecord,
+  language: CurlCodeLanguage
+): { language: CurlCodeLanguage; label: string; code: string } {
+  const generators: Record<CurlCodeLanguage, (input: HttpRequestRecord) => string> = {
+    fetch: exportRequestAsFetch,
+    axios: exportRequestAsAxios,
+    python: exportRequestAsPython,
+    node: exportRequestAsNode,
+    php: exportRequestAsPhp,
+    go: exportRequestAsGo
+  }
+
+  return {
+    language,
+    label: languageLabel(language),
+    code: generators[language](request)
+  }
 }
 
 export function parsePostmanCollection(

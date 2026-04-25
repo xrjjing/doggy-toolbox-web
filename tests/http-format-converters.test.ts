@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { HttpRequestRecord } from '@shared/ipc-contract'
 import {
+  exportRequestAsCodeSnippet,
   exportCollectionAsApifox,
   exportCollectionAsOpenApi,
   exportCollectionAsPostman,
@@ -104,6 +105,35 @@ describe('http format converters', () => {
     expect(command).toContain("'Content-Type:application/json'")
     expect(command).toContain("'Authorization:Bearer {{token}}'")
     expect(command).toContain('\'{"name":"doggy"}\'')
+  })
+
+  it('exports request as multi language snippets for curl tool migration', () => {
+    const fetchSnippet = exportRequestAsCodeSnippet(createRequest(), 'fetch')
+    const axiosSnippet = exportRequestAsCodeSnippet(createRequest(), 'axios')
+    const pythonSnippet = exportRequestAsCodeSnippet(createRequest(), 'python')
+    const nodeSnippet = exportRequestAsCodeSnippet(createRequest(), 'node')
+    const phpSnippet = exportRequestAsCodeSnippet(createRequest(), 'php')
+    const goSnippet = exportRequestAsCodeSnippet(createRequest(), 'go')
+
+    expect(fetchSnippet.label).toBe('Fetch')
+    expect(fetchSnippet.code).toContain('await fetch(')
+    expect(fetchSnippet.code).toContain('"Authorization": "Bearer {{token}}"')
+
+    expect(axiosSnippet.code).toContain("import axios from 'axios'")
+    expect(axiosSnippet.code).toContain('data: {')
+
+    expect(pythonSnippet.code).toContain('import requests')
+    expect(pythonSnippet.code).toContain('requests.request("POST"')
+
+    expect(nodeSnippet.code).toContain("import https from 'node:https'")
+    expect(nodeSnippet.code).toContain('headers: {')
+    expect(nodeSnippet.code).toContain('req.write(body)')
+
+    expect(phpSnippet.code).toContain('curl_init(')
+    expect(phpSnippet.code).toContain('CURLOPT_POSTFIELDS')
+
+    expect(goSnippet.code).toContain('http.NewRequest(')
+    expect(goSnippet.code).toContain('req.Header.Set("Authorization", "Bearer {{token}}")')
   })
 
   it('parses Postman collection into request inputs', () => {

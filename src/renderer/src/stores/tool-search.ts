@@ -25,15 +25,6 @@ const TOOL_SEARCH_STORAGE_KEY = 'doggy-toolbox-web:tool-search'
 
 const routeTargets: ToolSearchTarget[] = [
   {
-    id: 'dashboard',
-    label: '总览',
-    description: '查看运行时、Codex / Claude 本机配置和迁移概览。',
-    category: '工作台',
-    kind: 'route',
-    path: '/',
-    keywords: ['dashboard', 'runtime', 'zonglan', 'yunxing']
-  },
-  {
     id: 'commands',
     label: '命令管理',
     description: '管理常用命令分组、命令卡片和 AI 说明。',
@@ -61,15 +52,6 @@ const routeTargets: ToolSearchTarget[] = [
     keywords: ['prompt', 'template', 'moban']
   },
   {
-    id: 'nodes',
-    label: '节点列表',
-    description: '管理节点资料、标签筛选和分享链接导入。',
-    category: '网络与节点',
-    kind: 'route',
-    path: '/nodes',
-    keywords: ['node', 'proxy', 'jiedian']
-  },
-  {
     id: 'http',
     label: 'HTTP 集合',
     description: '管理 HTTP 请求、环境变量、历史、批量测试和 AI 分析。',
@@ -81,7 +63,7 @@ const routeTargets: ToolSearchTarget[] = [
   {
     id: 'backup',
     label: '备份恢复',
-    description: '导出或覆盖恢复命令、凭证、Prompt、节点、HTTP、AI 设置。',
+    description: '导出或覆盖恢复命令、凭证、Prompt、HTTP、AI 设置。',
     category: '维护',
     kind: 'route',
     path: '/backup',
@@ -111,7 +93,16 @@ const toolTargets: ToolSearchTarget[] = toolCatalog.map((tool) => ({
   id: `tool:${tool.key}`,
   label: tool.title,
   description: tool.description,
-  category: '工具工作台',
+  category:
+    tool.category === 'encoding-format'
+      ? '编码与格式转换'
+      : tool.category === 'security-crypto'
+        ? '安全与加密'
+        : tool.category === 'text-content'
+          ? '文本与内容处理'
+          : tool.category === 'network-protocol'
+            ? '网络、协议与接口'
+            : '时间、数据生成与 DevOps',
   kind: 'tool',
   path: `/tools?tool=${tool.key}`,
   tool: tool.key,

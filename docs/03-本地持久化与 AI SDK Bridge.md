@@ -36,6 +36,13 @@ app.getPath('userData')
 - `storage/ai-chat-sessions.json`
 - `storage/ai-settings.json`
 
+AI SDK runtime 另外放在：
+
+- `ai-runtimes/codex-sdk`
+- `ai-runtimes/claude-agent-sdk`
+
+这两块不进入基础安装包。用户需要 AI 时，在 AI 设置页点击安装后才会下载到本机用户数据目录。
+
 `ensureAppDataLayout()` 会确保这些目录存在。
 
 ## 3. JSON Repository 的实现方式
@@ -248,7 +255,22 @@ Renderer
 - 读取 `~/.claude.json`
 - 输出 RuntimeInfo 和状态快照
 
-### 8.2 `AiProviderRouter`
+### 8.2 `AiSdkRuntimeManager`
+
+职责：
+
+- 检测 Codex / Claude SDK runtime 是否已安装
+- 在 AI 设置页执行安装、更新、卸载
+- 生成 `userData/ai-runtimes/<provider>/package.json`
+- 优先用打包产物里的 runtime installer 安装依赖
+- 开发态回退系统 `pnpm`、`corepack pnpm` 或 `npm`
+
+当前只为 `macOS arm64` 与 `Windows x64` 发布包准备内置 installer：
+
+- `resources/runtime-installers/darwin-arm64/pnpm`
+- `resources/runtime-installers/win32-x64/pnpm.exe`
+
+### 8.3 `AiProviderRouter`
 
 职责：
 
@@ -256,7 +278,7 @@ Renderer
 - 统一 `getRuntime()`
 - 统一 `run()`
 
-### 8.3 `AiSessionService`
+### 8.4 `AiSessionService`
 
 职责：
 
@@ -266,7 +288,7 @@ Renderer
 - 把事件写入历史
 - 把事件继续推给窗口
 
-### 8.4 `AiBridgeService`
+### 8.5 `AiBridgeService`
 
 职责非常薄：
 
@@ -276,7 +298,7 @@ Renderer
 
 它只是窗口事件桥，不做业务编排。
 
-### 8.5 `AiChatHistoryService`
+### 8.6 `AiChatHistoryService`
 
 职责：
 
@@ -285,7 +307,7 @@ Renderer
 - 获取历史列表
 - 获取单个会话详情
 
-### 8.6 `CodexSdkBridge`
+### 8.7 `CodexSdkBridge`
 
 职责：
 
@@ -303,7 +325,7 @@ Renderer
 - `mcp_tool_call` -> `tool`
 - `turn.completed` -> `usage`
 
-### 8.7 `ClaudeAgentBridge`
+### 8.8 `ClaudeAgentBridge`
 
 职责：
 
@@ -356,13 +378,13 @@ Renderer
 
 - 本机配置检测
 - 两套 SDK 接入
+- SDK runtime 按需安装 / 更新 / 卸载
 - 历史会话保存
 - thinking / tool / usage / session-ref 保留
 - 工具页 AI 分析复用同一链路
+- 2026-04-23 已重新验证真实调用：Claude session `67cab6f5-c242-4215-b47e-42b2df503f8a` 返回 `DOGGY_AI_SMOKE_OK`；Codex thread `019db9ba-e9eb-76a0-abf3-ac6ca49f6c79` 返回 `DOGGY_AI_SMOKE_OK`。
 
 当前还没有做的部分：
 
 - 更复杂的多轮会话管理
-- 可配置 system prompt 面板
 - 页面级 AI 全量嵌入
-- 旧项目 `ai-settings` 页面体验完整迁移

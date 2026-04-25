@@ -28,11 +28,11 @@
 
 ## 验证清单
 
-- `npm run test`：
-- `npm run typecheck`：
-- `npm run lint`：
-- `npm run build`：
-- `npm run smoke:ai`：
+- `pnpm run test`：
+- `pnpm run typecheck`：
+- `pnpm run lint`：
+- `pnpm run build`：
+- `pnpm run smoke:ai`：
 - GitHub Actions macOS artifact：
 - GitHub Actions Windows artifact：
 

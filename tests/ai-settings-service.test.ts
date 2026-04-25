@@ -22,8 +22,7 @@ describe('AiSettingsService', () => {
         tools: true,
         http: true,
         commands: true,
-        prompts: true,
-        nodes: true
+        prompts: true
       }
     })
     expect(state.settings.systemPrompt).toContain('先解释结果')
@@ -36,8 +35,7 @@ describe('AiSettingsService', () => {
       workingDirectory: '/tmp/doggy-project',
       globalEnabled: false,
       features: {
-        http: false,
-        nodes: false
+        http: false
       }
     })
 
@@ -50,8 +48,7 @@ describe('AiSettingsService', () => {
         tools: true,
         http: false,
         commands: true,
-        prompts: true,
-        nodes: false
+        prompts: true
       }
     })
   })

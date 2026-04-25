@@ -29,11 +29,13 @@ import { useAiSettingsStore } from '@renderer/stores/ai-settings'
 import { useAiStore } from '@renderer/stores/ai'
 import { useHttpCollectionsStore } from '@renderer/stores/http-collections'
 import {
+  exportRequestAsCodeSnippet,
   exportCollectionAsApifox,
   exportCollectionAsOpenApi,
   exportCollectionAsPostman,
   exportRequestAsCurl,
   exportRequestAsHttpie,
+  type CurlCodeLanguage,
   parseApifoxCollection,
   parseCurlCommand,
   parseOpenApiDocument,
@@ -84,6 +86,9 @@ const curlImportModalVisible = ref(false)
 const collectionImportModalVisible = ref(false)
 const exportModalVisible = ref(false)
 const curlImportText = ref('')
+const curlGeneratedCode = ref('')
+const curlGeneratedLabel = ref('Fetch')
+const curlCodeLanguage = ref<CurlCodeLanguage>('fetch')
 const collectionImportText = ref('')
 const collectionImportFormat = ref<CollectionImportFormat>('postman')
 const exportText = ref('')
@@ -173,6 +178,14 @@ const collectionImportPlaceholder = computed(() => {
   if (collectionImportFormat.value === 'apifox') return '粘贴 Apifox 导出的 JSON'
   return '粘贴 Postman Collection v2.1 JSON'
 })
+const curlCodeLanguageOptions: Array<{ label: string; value: CurlCodeLanguage }> = [
+  { label: 'Fetch', value: 'fetch' },
+  { label: 'Axios', value: 'axios' },
+  { label: 'Python', value: 'python' },
+  { label: 'Node.js', value: 'node' },
+  { label: 'PHP', value: 'php' },
+  { label: 'Go', value: 'go' }
+]
 
 function formatUpdatedAt(value: string): string {
   if (!value) return '等待初始化'
@@ -358,14 +371,81 @@ async function submitEnvironment(): Promise<void> {
 
 async function importCurlRequest(): Promise<void> {
   try {
-    await httpStore.saveRequest(
-      parseCurlCommand(curlImportText.value, httpStore.activeCollectionId)
-    )
+    const request = parseCurlCommand(curlImportText.value, httpStore.activeCollectionId)
+    await httpStore.saveRequest(request)
     curlImportText.value = ''
+    curlGeneratedCode.value = ''
     curlImportModalVisible.value = false
     message.success('cURL 已导入为 HTTP 请求')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+/**
+ * 旧 tool-curl 页的“解析后继续生成多语言代码”能力收敛到当前 HTTP 页。
+ * 这里不需要主进程参与，因为只是把同一条请求结构投影成示例代码文本。
+ */
+function generateCurlCodePreview(): void {
+  try {
+    const parsed = parseCurlCommand(curlImportText.value, httpStore.activeCollectionId)
+    const previewRequest: HttpRequestRecord = {
+      id: 'curl-preview',
+      collectionId:
+        parsed.collectionId || httpStore.activeCollectionId || httpStore.defaultCollectionId,
+      name: parsed.name,
+      method: parsed.method ?? 'GET',
+      url: parsed.url ?? '',
+      description: parsed.description ?? '',
+      headers: (parsed.headers ?? []).map((item, index) => ({
+        id: `curl-preview-header-${index}`,
+        key: item.key ?? '',
+        value: item.value ?? '',
+        enabled: item.enabled !== false,
+        description: item.description ?? ''
+      })),
+      params: (parsed.params ?? []).map((item, index) => ({
+        id: `curl-preview-param-${index}`,
+        key: item.key ?? '',
+        value: item.value ?? '',
+        enabled: item.enabled !== false,
+        description: item.description ?? ''
+      })),
+      body: {
+        type: parsed.body?.type ?? 'none',
+        content: parsed.body?.content ?? ''
+      },
+      auth: {
+        type: parsed.auth?.type ?? 'none',
+        token: parsed.auth?.token ?? '',
+        username: parsed.auth?.username ?? '',
+        password: parsed.auth?.password ?? ''
+      },
+      tags: parsed.tags ?? [],
+      order: 0,
+      createdAt: '',
+      updatedAt: ''
+    }
+    const result = exportRequestAsCodeSnippet(previewRequest, curlCodeLanguage.value)
+    curlGeneratedLabel.value = result.label
+    curlGeneratedCode.value = result.code
+    message.success(`已生成 ${result.label} 示例代码`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function copyCurlGeneratedCode(): Promise<void> {
+  if (!curlGeneratedCode.value) {
+    message.warning('请先解析 cURL 并生成代码')
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(curlGeneratedCode.value)
+    message.success(`${curlGeneratedLabel.value} 示例代码已复制`)
+  } catch {
+    message.error('当前环境无法直接写入剪贴板')
   }
 }
 
@@ -609,45 +689,50 @@ onMounted(() => {
 
   <NCard class="soft-card http-toolbar" :bordered="false">
     <div class="http-toolbar-row">
-      <NInput
-        :value="httpStore.search"
-        clearable
-        placeholder="搜索请求名称、URL、Header、Param、Body、标签"
-        @update:value="httpStore.setSearch"
-      />
-      <NSelect
-        :value="httpStore.activeCollectionId"
-        :options="collectionOptions"
-        placeholder="选择集合"
-        @update:value="httpStore.setActiveCollection"
-      />
-      <NButton secondary :loading="httpStore.loading" @click="httpStore.load">刷新</NButton>
-      <NSelect
-        v-model:value="aiProvider"
-        :options="[
-          { label: 'Codex SDK', value: 'codex' },
-          { label: 'Claude Code SDK', value: 'claude-code' }
-        ]"
-        class="tool-select"
-      />
-      <NButton
-        secondary
-        :disabled="!aiSettingsStore.isFeatureEnabled('http') || !httpStore.activeRequest"
-        @click="explainHttpWithAi"
-      >
-        AI 分析
-      </NButton>
-      <NButton
-        secondary
-        :loading="httpStore.batchExecuting"
-        :disabled="httpStore.visibleRequests.length === 0"
-        @click="executeActiveCollectionBatch"
-      >
-        批量测试
-      </NButton>
-      <NButton secondary @click="curlImportModalVisible = true">导入 cURL</NButton>
-      <NButton secondary @click="collectionImportModalVisible = true">导入集合</NButton>
-      <NButton type="primary" @click="openCreateRequestModal">新增请求</NButton>
+      <div class="http-toolbar-filters">
+        <NInput
+          :value="httpStore.search"
+          clearable
+          placeholder="搜索请求名称、URL、Header、Param、Body、标签"
+          @update:value="httpStore.setSearch"
+        />
+        <NSelect
+          :value="httpStore.activeCollectionId"
+          :options="collectionOptions"
+          placeholder="选择集合"
+          @update:value="httpStore.setActiveCollection"
+        />
+        <NSelect
+          v-model:value="aiProvider"
+          :options="[
+            { label: 'Codex SDK', value: 'codex' },
+            { label: 'Claude Code SDK', value: 'claude-code' }
+          ]"
+          class="tool-select"
+        />
+      </div>
+
+      <div class="http-toolbar-actions">
+        <NButton secondary :loading="httpStore.loading" @click="httpStore.load">刷新</NButton>
+        <NButton
+          secondary
+          :disabled="!aiSettingsStore.isFeatureEnabled('http') || !httpStore.activeRequest"
+          @click="explainHttpWithAi"
+        >
+          AI 分析
+        </NButton>
+        <NButton
+          secondary
+          :loading="httpStore.batchExecuting"
+          :disabled="httpStore.visibleRequests.length === 0"
+          @click="executeActiveCollectionBatch"
+        >
+          批量测试
+        </NButton>
+        <NButton secondary @click="curlImportModalVisible = true">导入 cURL</NButton>
+        <NButton secondary @click="collectionImportModalVisible = true">导入集合</NButton>
+        <NButton type="primary" @click="openCreateRequestModal">新增请求</NButton>
+      </div>
     </div>
   </NCard>
 
@@ -1213,22 +1298,52 @@ onMounted(() => {
   </NModal>
 
   <NModal v-model:show="curlImportModalVisible" preset="card" title="导入 cURL" class="form-modal">
-    <NForm>
-      <NFormItem label="cURL 命令">
-        <NInput
-          v-model:value="curlImportText"
-          type="textarea"
-          :autosize="{ minRows: 8, maxRows: 16 }"
-          placeholder="粘贴 curl -X POST ... 命令"
-        />
-      </NFormItem>
+    <NSpace vertical size="large">
+      <NForm>
+        <NFormItem label="cURL 命令">
+          <NInput
+            v-model:value="curlImportText"
+            type="textarea"
+            :autosize="{ minRows: 8, maxRows: 16 }"
+            placeholder="粘贴 curl -X POST ... 命令"
+          />
+        </NFormItem>
+      </NForm>
+
+      <div class="card-title-row">
+        <div>
+          <strong>代码生成</strong>
+          <p class="muted">旧 tool-curl 页的多语言代码生成能力已收敛到这里。</p>
+        </div>
+        <NSpace>
+          <NSelect
+            v-model:value="curlCodeLanguage"
+            :options="curlCodeLanguageOptions"
+            class="tool-select"
+          />
+          <NButton secondary @click="generateCurlCodePreview">解析并生成</NButton>
+          <NButton secondary :disabled="!curlGeneratedCode" @click="copyCurlGeneratedCode">
+            复制代码
+          </NButton>
+        </NSpace>
+      </div>
+
+      <NInput
+        :value="curlGeneratedCode"
+        type="textarea"
+        readonly
+        :autosize="{ minRows: 8, maxRows: 18 }"
+        :placeholder="`这里会展示 ${curlGeneratedLabel} 示例代码`"
+      />
+
       <div class="action-row modal-actions">
         <NButton secondary @click="curlImportModalVisible = false">取消</NButton>
+        <NButton secondary @click="generateCurlCodePreview">只生成代码</NButton>
         <NButton type="primary" :loading="httpStore.saving" @click="importCurlRequest">
           导入为请求
         </NButton>
       </div>
-    </NForm>
+    </NSpace>
   </NModal>
 
   <NModal

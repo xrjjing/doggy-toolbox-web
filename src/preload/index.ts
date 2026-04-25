@@ -29,10 +29,6 @@ import type {
   HttpExecuteRequestInput,
   HttpRequestSaveInput,
   LegacyImportInput,
-  NodeSaveInput,
-  NodeConversionResult,
-  NodeSubscriptionFetchResult,
-  NodeValidationResult,
   PromptExportDocument,
   PromptExportInput,
   PromptImportInput,
@@ -94,15 +90,6 @@ const api: BridgeApi = {
     ipcRenderer.invoke('credentials:reorder', credentialIds),
   deleteCredential: (credentialId: string) =>
     ipcRenderer.invoke('credentials:delete', credentialId),
-  getNodesState: () => ipcRenderer.invoke('nodes:get-state'),
-  saveNode: (input: NodeSaveInput) => ipcRenderer.invoke('nodes:save', input),
-  deleteNode: (nodeId: string) => ipcRenderer.invoke('nodes:delete', nodeId),
-  convertNodeText: (input: string): Promise<NodeConversionResult> =>
-    ipcRenderer.invoke('nodes:convert-text', input),
-  fetchNodeSubscription: (input: string): Promise<NodeSubscriptionFetchResult> =>
-    ipcRenderer.invoke('nodes:fetch-subscription', input),
-  validateConvertedNodes: (input: string): Promise<NodeValidationResult[]> =>
-    ipcRenderer.invoke('nodes:validate-converted', input),
   getHttpCollectionsState: () => ipcRenderer.invoke('http-collections:get-state'),
   saveHttpCollection: (input: HttpCollectionSaveInput) =>
     ipcRenderer.invoke('http-collections:save-collection', input),

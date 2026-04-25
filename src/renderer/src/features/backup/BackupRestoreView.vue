@@ -29,7 +29,6 @@ const summaryCards = computed(() => {
     { label: '凭证', value: summary?.credentials ?? 0 },
     { label: 'Prompt 分类', value: summary?.promptCategories ?? 0 },
     { label: 'Prompt 模板', value: summary?.promptTemplates ?? 0 },
-    { label: '节点', value: summary?.nodes ?? 0 },
     { label: 'HTTP 集合', value: summary?.httpCollections ?? 0 },
     { label: 'HTTP 请求', value: summary?.httpRequests ?? 0 },
     { label: 'HTTP 环境', value: summary?.httpEnvironments ?? 0 },
@@ -104,7 +103,7 @@ async function importBackup(): Promise<void> {
     <p class="eyebrow">backup protocol</p>
     <h2>备份 / 恢复</h2>
     <p>
-      新仓总备份覆盖当前已迁移完成的本地模块：命令、凭证、Prompt 模板、节点列表、HTTP 集合和 AI
+      新仓总备份覆盖当前已迁移完成的本地模块：命令、凭证、Prompt 模板、HTTP 集合和 AI
       设置。这些数据都会通过 Electron Main Process 统一导出与恢复。
     </p>
   </section>
@@ -135,7 +134,7 @@ async function importBackup(): Promise<void> {
       />
 
       <p class="muted">
-        导入时会覆盖所选模块的本地数据。凭证恢复后会重新按当前机器的编码方式写入； 节点列表与 HTTP
+        导入时会覆盖所选模块的本地数据。凭证恢复后会重新按当前机器的编码方式写入；HTTP
         集合会按备份里的数组整体覆盖本地资料库；AI
         设置会把默认工作目录、系统提示和模块开关一并恢复。
       </p>

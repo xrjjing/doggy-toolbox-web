@@ -9,14 +9,12 @@ import type {
   LegacyImportInput,
   LegacyImportResult,
   LegacyImportSourceKind,
-  NodeRecord,
   PromptCategory,
   PromptTemplate
 } from '../../shared/ipc-contract'
 import type { CommandService } from './command-service'
 import type { CredentialService } from './credential-service'
-import type { NodeService } from './node-service'
-import { parsePromptVariables } from './prompt-service'
+import { parsePromptVariables } from '../../shared/prompt-template-core'
 import type { PromptService } from './prompt-service'
 
 type LegacyBackupDocument = {
@@ -27,7 +25,6 @@ type LegacyBackupDocument = {
     tabs?: Array<Record<string, unknown>>
     commands?: Array<Record<string, unknown>>
     credentials?: Array<Record<string, unknown>>
-    nodes?: Array<Record<string, unknown>>
   }
 }
 
@@ -41,7 +38,6 @@ type LegacyPromptExportDocument = {
 export type LegacyImportServiceDependencies = {
   commandService: CommandService
   credentialService: CredentialService
-  nodeService: NodeService
   promptService: PromptService
 }
 
@@ -60,7 +56,6 @@ function createEmptySummary(): BackupSummary {
     credentials: 0,
     promptCategories: 0,
     promptTemplates: 0,
-    nodes: 0,
     httpCollections: 0,
     httpRequests: 0,
     httpEnvironments: 0,
@@ -124,39 +119,6 @@ function detectSourceKind(payload: unknown): LegacyImportSourceKind {
   throw new Error('暂不支持该 JSON 结构，请导入旧项目总备份或旧 Prompt 模板导出文件')
 }
 
-function sanitizePort(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(parsed)) {
-    return 0
-  }
-  return Math.trunc(parsed)
-}
-
-function getNumberField(record: Record<string, unknown>, field: string): number | undefined {
-  return typeof record[field] === 'number' ? record[field] : undefined
-}
-
-function extractLegacyNodeConfigText(node: Record<string, unknown>): string {
-  const direct =
-    sanitizeText(node.configText) || sanitizeText(node['config.yaml']) || sanitizeText(node.content)
-  if (direct) {
-    return direct
-  }
-
-  const config = node.config
-  if (typeof config === 'string') {
-    return sanitizeText(config)
-  }
-
-  if (config && typeof config === 'object' && !Array.isArray(config)) {
-    const candidate = config as Record<string, unknown>
-    const yaml = sanitizeText(candidate.yaml) || sanitizeText(candidate['config.yaml'])
-    return yaml || JSON.stringify(candidate, null, 2)
-  }
-
-  return ''
-}
-
 /**
  * analyze 只做影响评估，不执行真实写入。
  * 这样 renderer 可以先展示“会覆盖哪些模块、哪些不会导入”。
@@ -167,23 +129,20 @@ function analyzeLegacyBackup(document: LegacyBackupDocument): LegacyImportAnalys
   const credentials = Array.isArray(document.data?.credentials)
     ? (document.data?.credentials ?? [])
     : []
-  const nodes = Array.isArray(document.data?.nodes) ? (document.data?.nodes ?? []) : []
-
   return {
     sourceKind: 'doggy-toolbox-backup',
     sourceLabel: '旧项目总备份 JSON',
-    availableSections: ['commands', 'credentials', 'nodes'],
+    availableSections: ['commands', 'credentials'],
     summary: {
       ...createEmptySummary(),
       commands: commands.length,
       commandTabs: tabs.length,
-      credentials: credentials.length,
-      nodes: nodes.length
+      credentials: credentials.length
     },
     warnings: [
       '旧项目总备份不包含 Prompt 模板。',
       '旧项目总备份里的主题配置不会导入到新仓。',
-      '导入命令、凭证或节点时会覆盖新项目当前对应模块数据。'
+      '导入命令或凭证时会覆盖新项目当前对应模块数据。'
     ]
   }
 }
@@ -260,12 +219,6 @@ export class LegacyImportService {
       const mapped = this.mapLegacyCredentials(document)
       const state = await this.dependencies.credentialService.restoreBackupSection(mapped)
       summary.credentials = state.credentials.length
-    }
-
-    if (sections.includes('nodes')) {
-      const mapped = this.mapLegacyNodes(document)
-      const state = await this.dependencies.nodeService.restoreBackupSection(mapped)
-      summary.nodes = state.nodes.length
     }
 
     return {
@@ -435,28 +388,6 @@ export class LegacyImportService {
         password: sanitizeText(credential.password),
         extra: sanitizeArray(credential.extra),
         order: typeof credential.order === 'number' ? credential.order : index,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      }))
-    }
-  }
-
-  private mapLegacyNodes(document: LegacyBackupDocument): Pick<{ nodes: NodeRecord[] }, 'nodes'> {
-    const legacyNodes = Array.isArray(document.data?.nodes) ? (document.data?.nodes ?? []) : []
-    const timestamp = nowIso()
-
-    return {
-      nodes: legacyNodes.map((node, index) => ({
-        id: randomUUID(),
-        // 旧仓节点字段并不稳定，名称字段做多路兜底以保住可读性。
-        name: sanitizeText(node.name) || sanitizeText(node.title) || `导入节点 ${index + 1}`,
-        type: sanitizeText(node.type) || 'custom',
-        server: sanitizeText(node.server),
-        port: sanitizePort(node.port),
-        rawLink: sanitizeText(node.raw_link ?? node.rawLink),
-        configText: extractLegacyNodeConfigText(node),
-        tags: sanitizeArray(node.tags),
-        order: getNumberField(node, 'order') ?? getNumberField(node, 'order_index') ?? index,
         createdAt: timestamp,
         updatedAt: timestamp
       }))

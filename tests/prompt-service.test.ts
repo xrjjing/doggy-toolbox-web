@@ -2,12 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import {
-  fillPromptTemplate,
-  parsePromptVariables,
-  PromptService
-} from '../src/main/services/prompt-service'
+import { PromptService } from '../src/main/services/prompt-service'
 import { resolveAppDataPaths } from '../src/main/services/app-data'
+import { fillPromptTemplate, parsePromptVariables } from '../src/shared/prompt-template-core'
 
 async function createService(): Promise<{ rootDir: string; service: PromptService }> {
   const rootDir = await mkdtemp(join(tmpdir(), 'doggy-toolbox-web-prompts-'))

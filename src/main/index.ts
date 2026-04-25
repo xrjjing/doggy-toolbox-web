@@ -19,8 +19,6 @@ import {
 } from './services/credential-service'
 import { HttpCollectionService } from './services/http-collection-service'
 import { LocalAiRuntimeService } from './services/local-ai-runtime-service'
-import { NodeService } from './services/node-service'
-import { NodeConverterService } from './services/node-converter-service'
 import { PromptService } from './services/prompt-service'
 import { LegacyImportService } from './services/legacy-import-service'
 import { getRuntimeInfo } from './utils/runtime'
@@ -45,7 +43,6 @@ import type {
   HttpExecuteRequestInput,
   HttpRequestSaveInput,
   LegacyImportInput,
-  NodeSaveInput,
   PromptExportInput,
   PromptImportInput,
   PromptCategorySaveInput,
@@ -68,15 +65,13 @@ let httpCollectionService: HttpCollectionService
 let promptService: PromptService
 let backupService: BackupService
 let legacyImportService: LegacyImportService
-let nodeService: NodeService
-let nodeConverterService: NodeConverterService
 let currentAppearance: AppAppearance | null = null
 
 const DEFAULT_WINDOW_APPEARANCE: AppAppearance = {
   theme: 'dark',
   glassMode: false,
   glassOpacity: 60,
-  uiScale: 80,
+  uiScale: 55,
   titlebarMode: 'fixed'
 }
 
@@ -99,7 +94,7 @@ function normalizeAppearance(input?: Partial<AppAppearance> | null): AppAppearan
       ? Math.max(45, Math.min(95, Number(input?.glassOpacity)))
       : DEFAULT_WINDOW_APPEARANCE.glassOpacity,
     uiScale: Number.isFinite(input?.uiScale)
-      ? Math.max(50, Math.min(100, Number(input?.uiScale)))
+      ? Math.max(40, Math.min(100, Number(input?.uiScale)))
       : DEFAULT_WINDOW_APPEARANCE.uiScale,
     titlebarMode:
       input?.titlebarMode === 'minimal' ? 'minimal' : DEFAULT_WINDOW_APPEARANCE.titlebarMode
@@ -119,12 +114,16 @@ function resolveWindowBackground(theme: AppAppearance['theme']): string {
 
 function applyWindowAppearance(window: BrowserWindow, appearance: AppAppearance): void {
   window.setBackgroundColor(resolveWindowBackground(appearance.theme))
-  window.webContents.setZoomFactor(appearance.uiScale / 100)
+  /**
+   * 页面缩放改回 renderer 侧统一控制。
+   * 主进程这里始终保持 1，避免 BrowserWindow 级缩放直接造成可视区留白。
+   */
+  window.webContents.setZoomFactor(1)
 
   if (process.platform === 'darwin') {
     try {
       if (appearance.glassMode) {
-        window.setVibrancy(appearance.titlebarMode === 'minimal' ? 'sidebar' : 'under-window')
+        window.setVibrancy(appearance.titlebarMode === 'minimal' ? 'menu' : 'under-window')
       } else {
         window.setVibrancy(null)
       }
@@ -133,7 +132,7 @@ function applyWindowAppearance(window: BrowserWindow, appearance: AppAppearance)
     }
     try {
       window.setWindowButtonPosition(
-        appearance.titlebarMode === 'minimal' ? { x: 18, y: 18 } : { x: 16, y: 16 }
+        appearance.titlebarMode === 'minimal' ? { x: 14, y: 10 } : { x: 16, y: 16 }
       )
     } catch {
       // 仅在支持该 API 的平台生效。
@@ -175,7 +174,7 @@ function createWindow(): void {
     icon,
     webPreferences: {
       // 只暴露 preload 白名单 API，renderer 本身没有 Node/Electron 直连能力。
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true
@@ -261,21 +260,17 @@ function registerIpc(): void {
   commandService = new CommandService(app.getPath('userData'))
   credentialService = new CredentialService(app.getPath('userData'), createCredentialSecretCodec())
   httpCollectionService = new HttpCollectionService(app.getPath('userData'))
-  nodeService = new NodeService(app.getPath('userData'))
-  nodeConverterService = new NodeConverterService()
   promptService = new PromptService(app.getPath('userData'))
   backupService = new BackupService({
     aiSettingsService,
     commandService,
     credentialService,
     httpCollectionService,
-    nodeService,
     promptService
   })
   legacyImportService = new LegacyImportService({
     commandService,
     credentialService,
-    nodeService,
     promptService
   })
 
@@ -346,20 +341,6 @@ function registerIpc(): void {
   )
   ipcMain.handle('credentials:delete', (_event, credentialId: string) =>
     credentialService.deleteCredential(credentialId)
-  )
-
-  // Nodes
-  ipcMain.handle('nodes:get-state', () => nodeService.getState())
-  ipcMain.handle('nodes:save', (_event, input: NodeSaveInput) => nodeService.saveNode(input))
-  ipcMain.handle('nodes:delete', (_event, nodeId: string) => nodeService.deleteNode(nodeId))
-  ipcMain.handle('nodes:convert-text', (_event, input: string) =>
-    nodeConverterService.convertText(input)
-  )
-  ipcMain.handle('nodes:fetch-subscription', (_event, input: string) =>
-    nodeConverterService.fetchSubscription(input)
-  )
-  ipcMain.handle('nodes:validate-converted', (_event, input: string) =>
-    nodeConverterService.validateConvertedNodes(input)
   )
 
   // HTTP collections

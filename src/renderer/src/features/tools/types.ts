@@ -47,11 +47,25 @@ export type ToolKind =
   | 'docker-swarm'
   | 'nginx'
 
+export type ToolCategoryKey =
+  | 'encoding-format'
+  | 'security-crypto'
+  | 'text-content'
+  | 'network-protocol'
+  | 'time-data-devops'
+
+export type ToolCategoryDefinition = {
+  key: ToolCategoryKey
+  label: string
+  description: string
+}
+
 /**
  * 工具目录最小展示结构；`accent` 只服务视觉表现，不参与业务逻辑。
  */
 export type ToolDefinition = {
   key: ToolKind
+  category: ToolCategoryKey
   title: string
   description: string
   accent: string

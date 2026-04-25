@@ -37,3 +37,6 @@ __pycache__/
 .roo/
 .claude/
 .snow/
+docs/*
+CLAUDE.md
+AGENTS.md

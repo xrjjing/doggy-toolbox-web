@@ -32,7 +32,41 @@ export type RuntimeHealthDescriptor = {
  * 保留这层转换后，新仓的 45-95 输入区间更接近旧视觉手感。
  */
 export function mapGlassOpacitySetting(percent: number): number {
-  return Math.pow(percent / 100, 0.65)
+  const normalized = 0.14 + ((percent - 45) / 50) * 0.72
+  return Number(Math.max(0.14, Math.min(0.86, normalized)).toFixed(3))
+}
+
+/**
+ * UI 缩放改成“55 档 = 正常基准”。
+ * 这样保留向下缩小的空间，同时避免旧 100 档把页面放得过大。
+ */
+export function mapUiScaleSetting(percent: number): number {
+  const bounded = Math.max(40, Math.min(100, percent))
+  if (bounded <= 55) {
+    const normalized = 0.82 + ((bounded - 40) / 15) * 0.18
+    return Number(Math.max(0.82, Math.min(1, normalized)).toFixed(2))
+  }
+  const normalized = 1 + ((bounded - 55) / 45) * 0.12
+  return Number(Math.max(1, Math.min(1.12, normalized)).toFixed(2))
+}
+
+/**
+ * 用户看到的百分比不再直接等于内部档位。
+ * 这里把 55 档映射成 100%，让设置文案和实际体感对齐。
+ */
+export function mapUiScaleDisplayPercent(percent: number): number {
+  return Math.round(mapUiScaleSetting(percent) * 100)
+}
+
+/**
+ * 设置弹窗里输入的是用户看到的百分比，需要反算回内部档位。
+ */
+export function resolveUiScaleDisplayPercent(percent: number): number {
+  const bounded = Math.max(82, Math.min(112, Math.round(percent)))
+  if (bounded <= 100) {
+    return Math.round(40 + ((bounded - 82) / 18) * 15)
+  }
+  return Math.round(55 + ((bounded - 100) / 12) * 45)
 }
 
 /**
@@ -76,7 +110,7 @@ export const defaultAppearance: AppAppearance = {
   theme: 'dark',
   glassMode: true,
   glassOpacity: 72,
-  uiScale: 80,
+  uiScale: 55,
   titlebarMode: 'fixed'
 }
 
@@ -162,7 +196,7 @@ function normalizeAppearance(input: Partial<AppAppearance> = {}): AppAppearance 
     ? Math.max(45, Math.min(95, Number(input.glassOpacity)))
     : defaultAppearance.glassOpacity
   const uiScale = Number.isFinite(input.uiScale)
-    ? Math.max(50, Math.min(100, Number(input.uiScale)))
+    ? Math.max(40, Math.min(100, Number(input.uiScale)))
     : defaultAppearance.uiScale
   return {
     theme,
@@ -194,6 +228,10 @@ function saveAppearance(appearance: AppAppearance): void {
   localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(appearance))
 }
 
+function cloneForBridge(input: AppAppearance): AppAppearance {
+  return cloneAppearance(normalizeAppearance(input))
+}
+
 export const useAppStore = defineStore('app', {
   state: () => ({
     // 首屏主题直接从本地恢复，避免页面先闪默认主题再切换。
@@ -216,21 +254,31 @@ export const useAppStore = defineStore('app', {
      * 这个入口专门给“设置弹窗草稿态”使用，允许用户先看效果，再决定保存还是恢复。
      */
     previewAppearance(nextAppearance: AppAppearance) {
-      this.appearance = normalizeAppearance(nextAppearance)
-      void window.doggy.applyAppearance(this.appearance).catch(() => {
-        // 预览失败不阻断 renderer 本地态，避免设置弹窗变成不可操作状态。
-      })
+      const appearance = cloneForBridge(nextAppearance)
+      this.appearance = appearance
+      try {
+        void window.doggy.applyAppearance(appearance).catch(() => {
+          // 预览失败不阻断 renderer 本地态，避免设置弹窗变成不可操作状态。
+        })
+      } catch {
+        // Structured clone 或 bridge 同步异常也不阻断本地预览态。
+      }
     },
     /**
      * 把完整外观快照写回 store 并持久化。
      * 和 `applyAppearance()` 的 patch 语义分开后，设置弹窗保存时可以直接提交最终草稿。
      */
     commitAppearance(nextAppearance: AppAppearance) {
-      this.appearance = normalizeAppearance(nextAppearance)
-      saveAppearance(this.appearance)
-      void window.doggy.applyAppearance(this.appearance).catch(() => {
-        // 主进程窗口应用失败时仍保留本地设置，用户可继续调整或刷新。
-      })
+      const appearance = cloneForBridge(nextAppearance)
+      this.appearance = appearance
+      saveAppearance(appearance)
+      try {
+        void window.doggy.applyAppearance(appearance).catch(() => {
+          // 主进程窗口应用失败时仍保留本地设置，用户可继续调整或刷新。
+        })
+      } catch {
+        // Structured clone 或 bridge 同步异常也不阻断本地保存结果。
+      }
     },
     /**
      * 统一通过这一入口变更外观。
@@ -265,7 +313,7 @@ export const useAppStore = defineStore('app', {
      */
     async syncAppearanceToWindow() {
       try {
-        await window.doggy.applyAppearance(this.appearance)
+        await window.doggy.applyAppearance(cloneForBridge(this.appearance))
       } catch {
         // 同步失败时不阻断页面启动，用户仍可在设置里继续调整。
       }

@@ -22,7 +22,6 @@ export const backupSectionOptions: Array<{ label: string; value: BackupSectionKe
   { label: '命令管理', value: 'commands' },
   { label: '凭证管理', value: 'credentials' },
   { label: 'Prompt 模板', value: 'prompts' },
-  { label: '节点列表', value: 'nodes' },
   { label: 'HTTP 集合', value: 'httpCollections' },
   { label: 'AI 设置', value: 'aiSettings' }
 ]
@@ -32,7 +31,6 @@ export const useBackupStore = defineStore('backup', () => {
     'commands',
     'credentials',
     'prompts',
-    'nodes',
     'httpCollections',
     'aiSettings'
   ])
