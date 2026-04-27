@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><title>Commands - Zen-iOS</title><link rel="stylesheet" href="core.css">
+    <style>
+        .cmd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+        .cmd-card { padding: 32px; }
+        .terminal-preview { background: #1C1C1E; color: #34C759; padding: 16px; border-radius: 12px; font-family: var(--font-mono); font-size: 12px; margin-top: 20px; box-shadow: var(--shadow-inner); }
+        .tag { padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; border: 1px solid var(--line); }
+    </style>
+</head>
+<body>
+    <div class="blob"></div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="eyebrow">Professional</div><h1>Doggy Box</h1></div>
+            <nav style="margin-top: 40px;">
+                <ul class="nav-list">
+                    <li><a href="workbench.html" class="nav-link"><span>🛠️</span> 开发工具</a></li>
+                    <li><a href="commands.html" class="nav-link active"><span>💻</span> 命令管理</a></li>
+                    <li><a href="http-lab.html" class="nav-link"><span>🌐</span> HTTP 实验室</a></li>
+                    <li><a href="ai-chat.html" class="nav-link"><span>🧠</span> AI 灵感空间</a></li>
+                    <li><a href="credentials.html" class="nav-link"><span>🔐</span> 凭证管理器</a></li>
+                    <li><a href="prompts.html" class="nav-link"><span>📝</span> Prompt 模板</a></li>
+                    <li><a href="backup.html" class="nav-link"><span>☁️</span> 备份与迁移</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main class="viewport">
+            <header class="view-header"><div class="eyebrow">Automation Console</div></header>
+            <div class="view-content fade-in">
+                <div class="header-group" style="margin-bottom: 40px;"><h2>命令管理中心</h2></div>
+                <div class="cmd-grid">
+                    <div class="zen-card cmd-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><div class="tag">Docker</div><div style="font-size:18px;">🐳</div></div>
+                        <h3 style="margin:20px 0 8px;">Swarm 部署脚本</h3>
+                        <p style="font-size:13px; color:var(--text-muted);">一键生成生产环境部署指令。</p>
+                        <div class="terminal-preview">$ docker stack deploy -c stack.yml</div>
+                    </div>
+                    <div class="zen-card cmd-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><div class="tag">Git</div><div style="font-size:18px;">🌿</div></div>
+                        <h3 style="margin:20px 0 8px;">分支自动清理</h3>
+                        <p style="font-size:13px; color:var(--text-muted);">自动识别并删除已合并的本地分支。</p>
+                        <div class="terminal-preview">$ git branch --merged | grep -v "*"</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

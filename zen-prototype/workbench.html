@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><title>Workbench - Zen-iOS Hybrid</title><link rel="stylesheet" href="core.css">
+    <style>
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 24px; }
+        .zen-card.dragging { opacity: 0.5; transform: scale(1.05); box-shadow: var(--shadow-float); z-index: 100; cursor: grabbing; }
+        .zen-card.over { border: 2px dashed var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="blob"></div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="eyebrow">Professional</div><h1>Doggy Box</h1></div>
+            <nav style="margin-top: 40px;">
+                <ul class="nav-list">
+                    <li><a href="workbench.html" class="nav-link active"><span>🛠️</span> 开发工具</a></li>
+                    <li><a href="commands.html" class="nav-link"><span>💻</span> 命令管理</a></li>
+                    <li><a href="http-lab.html" class="nav-link"><span>🌐</span> HTTP 实验室</a></li>
+                    <li><a href="ai-chat.html" class="nav-link"><span>🧠</span> AI 灵感空间</a></li>
+                    <li><a href="credentials.html" class="nav-link"><span>🔐</span> 凭证管理器</a></li>
+                    <li><a href="settings.html" class="nav-link"><span>⚙️</span> 全局设置</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="viewport">
+            <header class="view-header">
+                <div class="search-box" style="background: var(--bg-base); padding: 10px 20px; border-radius: var(--radius-pill); border: 1px solid var(--line); font-size: 13px; color: var(--text-muted); width: 300px;">
+                    搜索工具... (⌘K)
+                </div>
+                <div style="display:flex; gap:12px;">
+                    <a href="settings.html" style="text-decoration:none; width:40px; height:40px; border-radius:50%; border:1px solid var(--line); background:var(--card-bg); cursor:pointer; display:flex; align-items:center; justify-content:center;">⚙️</a>
+                    <button style="width:40px; height:40px; border-radius:50%; border:none; background:var(--text-main); color:var(--card-bg); cursor:pointer;">👤</button>
+                </div>
+            </header>
+
+            <div class="view-content fade-in">
+                <div class="header-group" style="margin-bottom: 40px; display:flex; justify-content:space-between; align-items:flex-end;">
+                    <div>
+                        <div class="eyebrow">Available Modules</div>
+                        <h2 style="font-size: 36px; margin: 0; letter-spacing: -0.05em;">开发工具箱</h2>
+                    </div>
+                    <div style="font-size:12px; color:var(--text-muted); font-weight:700;">长按卡片可自由排序工具</div>
+                </div>
+
+                <div class="tool-grid" id="draggable-grid">
+                    <div class="zen-card" draggable="true" onclick="window.location.href='tool-detail.html'">
+                        <div class="icon-box">🔐</div>
+                        <div style="font-weight: 700; font-size: 17px;">RSA 密钥对生成</div>
+                        <p style="font-size: 13px; color: var(--text-muted); margin-top: 12px;">符合工业标准的加密算法。</p>
+                    </div>
+                    <div class="zen-card" draggable="true">
+                        <div class="icon-box">📜</div>
+                        <div style="font-weight: 700; font-size: 17px;">JSON 智能格式化</div>
+                        <p style="font-size: 13px; color: var(--text-muted); margin-top: 12px;">自动修复语法错误的 JSON 流。</p>
+                    </div>
+                    <div class="zen-card" draggable="true">
+                        <div class="icon-box">📋</div>
+                        <div style="font-weight: 700; font-size: 17px;">Diff 代码对比</div>
+                        <p style="font-size: 13px; color: var(--text-muted); margin-top: 12px;">语义级代码合并建议。</p>
+                    </div>
+                    <div class="zen-card" draggable="true">
+                        <div class="icon-box">🖼️</div>
+                        <div style="font-weight: 700; font-size: 17px;">Image Base64</div>
+                        <p style="font-size: 13px; color: var(--text-muted); margin-top: 12px;">二进制流与物理图片无损互转。</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const grid = document.getElementById('draggable-grid');
+        let dragSrcEl = null;
+
+        function handleDragStart(e) {
+            this.classList.add('dragging');
+            dragSrcEl = this;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) e.preventDefault();
+            return false;
+        }
+
+        function handleDragEnter(e) { this.classList.add('over'); }
+        function handleDragLeave(e) { this.classList.remove('over'); }
+
+        function handleDrop(e) {
+            if (e.stopPropagation) e.stopPropagation();
+            if (dragSrcEl !== this) {
+                dragSrcEl.innerHTML = this.innerHTML;
+                this.innerHTML = e.dataTransfer.getData('text/html');
+            }
+            return false;
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            items.forEach(item => item.classList.remove('over'));
+        }
+
+        let items = document.querySelectorAll('.tool-grid .zen-card');
+        items.forEach(item => {
+            item.addEventListener('dragstart', handleDragStart, false);
+            item.addEventListener('dragenter', handleDragEnter, false);
+            item.addEventListener('dragover', handleDragOver, false);
+            item.addEventListener('dragleave', handleDragLeave, false);
+            item.addEventListener('drop', handleDrop, false);
+            item.addEventListener('dragend', handleDragEnd, false);
+        });
+    </script>
+</body>
+</html>

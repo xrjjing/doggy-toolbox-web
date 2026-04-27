@@ -4,6 +4,7 @@ import App from './App.vue'
 import { router } from './router'
 import { installBrowserBridge } from './bridge/browser-bridge'
 import './styles/theme.css'
+import './styles/theme-refresh.css'
 
 installBrowserBridge()
 

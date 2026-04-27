@@ -106,15 +106,6 @@ async function importSource(): Promise<void> {
 </script>
 
 <template>
-  <section class="page-heading">
-    <p class="eyebrow">legacy import</p>
-    <h2>旧数据导入助手</h2>
-    <p>
-      当前识别两类旧项目数据源：旧项目总备份 JSON，以及旧项目 Prompt 模板导出 JSON。
-      导入前会先做结构识别，导入时只落到新仓已经完成的模块。
-    </p>
-  </section>
-
   <section class="backup-summary-grid">
     <article v-for="card in summaryCards" :key="card.label" class="progress-card">
       <div class="progress-head">

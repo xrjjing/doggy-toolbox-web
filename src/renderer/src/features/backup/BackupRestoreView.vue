@@ -99,15 +99,6 @@ async function importBackup(): Promise<void> {
 </script>
 
 <template>
-  <section class="page-heading">
-    <p class="eyebrow">backup protocol</p>
-    <h2>备份 / 恢复</h2>
-    <p>
-      新仓总备份覆盖当前已迁移完成的本地模块：命令、凭证、Prompt 模板、HTTP 集合和 AI
-      设置。这些数据都会通过 Electron Main Process 统一导出与恢复。
-    </p>
-  </section>
-
   <section class="backup-summary-grid">
     <article v-for="card in summaryCards" :key="card.label" class="progress-card">
       <div class="progress-head">

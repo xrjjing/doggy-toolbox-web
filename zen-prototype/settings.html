@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><title>Settings - Zen-iOS</title><link rel="stylesheet" href="core.css">
+    <style>
+        .settings-layout { display: flex; gap: 32px; height: 100%; }
+        .settings-nav { width: 200px; display: flex; flex-direction: column; gap: 8px; }
+        .settings-content { flex: 1; background: var(--card-bg); border-radius: var(--radius-xl); border: 1px solid var(--line); padding: 40px; overflow-y: auto; box-shadow: var(--shadow-soft); }
+        
+        .setting-group { margin-bottom: 40px; }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); }
+        .setting-row:last-child { border: none; }
+        
+        .ios-switch { width: 51px; height: 31px; background: #E9E9EA; border-radius: 16px; position: relative; cursor: pointer; transition: 0.3s; }
+        .ios-switch.active { background: var(--success); }
+        .ios-switch::after { content: ''; position: absolute; left: 2px; top: 2px; width: 27px; height: 27px; background: white; border-radius: 50%; box-shadow: 0 3px 8px rgba(0,0,0,0.15); transition: 0.3s; }
+        .ios-switch.active::after { transform: translateX(20px); }
+        
+        .slider-group { flex: 1; max-width: 300px; }
+        .ios-slider { width: 100%; height: 6px; background: var(--bg-base); border-radius: 3px; appearance: none; outline: none; margin-top: 12px; }
+        .ios-slider::-webkit-slider-thumb { appearance: none; width: 24px; height: 24px; background: white; border-radius: 50%; border: 1px solid var(--line); box-shadow: 0 3px 8px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="blob"></div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="eyebrow">Suite Pro</div><h1>Doggy Box</h1></div>
+            <nav style="margin-top: 40px;">
+                <ul class="nav-list">
+                    <li><a href="workbench.html" class="nav-link"><span>🛠️</span> 开发工具</a></li>
+                    <li><a href="http-lab.html" class="nav-link"><span>🌐</span> HTTP 实验室</a></li>
+                    <li><a href="ai-chat.html" class="nav-link"><span>🧠</span> AI 灵感空间</a></li>
+                    <li><a href="settings.html" class="nav-link active"><span>⚙️</span> 全局设置</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main class="viewport">
+            <header class="view-header"><div class="eyebrow">System Preferences</div></header>
+            <div class="view-content fade-in">
+                <div class="settings-layout">
+                    <div class="settings-nav">
+                        <div class="list-item active">🎨 外观与主题</div>
+                        <div class="list-item">🤖 AI 模型服务</div>
+                        <div class="list-item">🔒 安全与隐私</div>
+                        <div class="list-item">🔔 通知设置</div>
+                    </div>
+                    <div class="settings-content">
+                        <div class="setting-group">
+                            <div class="eyebrow">Appearance</div>
+                            <div class="setting-row">
+                                <div><div style="font-weight:700;">毛玻璃特效</div><div style="font-size:12px; color:var(--text-muted);">启用窗口背景的光学模糊。</div></div>
+                                <div class="ios-switch active" onclick="this.classList.toggle('active')"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div style="font-weight:700;">背景透明度</div><div style="font-size:12px; color:var(--text-muted);">调整毛玻璃材质的穿透深度。</div></div>
+                                <div class="slider-group"><input type="range" class="ios-slider" value="72"></div>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <div class="eyebrow">AI Integration</div>
+                            <div class="setting-row">
+                                <div><div style="font-weight:700;">默认模型</div><div style="font-size:12px; color:var(--text-muted);">切换首选 AI 引擎。</div></div>
+                                <select style="padding:8px; border-radius:10px; border:1px solid var(--line); background:var(--bg-base);"><option>GPT-4o</option><option>Claude 3.5 Sonnet</option></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

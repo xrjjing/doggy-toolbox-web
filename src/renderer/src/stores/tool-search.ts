@@ -61,27 +61,18 @@ const routeTargets: ToolSearchTarget[] = [
     keywords: ['http', 'api', 'curl', 'postman']
   },
   {
-    id: 'backup',
-    label: '备份恢复',
-    description: '导出或覆盖恢复命令、凭证、Prompt、HTTP、AI 设置。',
+    id: 'data-center',
+    label: '数据迁移中心',
+    description: '统一处理旧项目导入、本地备份导出和备份恢复。',
     category: '维护',
     kind: 'route',
-    path: '/backup',
-    keywords: ['backup', 'restore', 'beifen']
-  },
-  {
-    id: 'legacy-import',
-    label: '旧数据导入',
-    description: '识别旧项目总备份和旧 Prompt 导出 JSON。',
-    category: '维护',
-    kind: 'route',
-    path: '/legacy-import',
-    keywords: ['legacy', 'import', 'daoru']
+    path: '/data-center',
+    keywords: ['backup', 'restore', 'legacy', 'import', 'data center', 'beifen', 'daoru']
   },
   {
     id: 'ai',
-    label: 'AI Bridge',
-    description: '本机 Codex / Claude SDK 会话、历史和 SDK-only 设置。',
+    label: 'AI Chat',
+    description: '本机 Codex / Claude SDK 聊天工作台、思考折叠和设置弹层。',
     category: 'AI',
     kind: 'route',
     path: '/ai',

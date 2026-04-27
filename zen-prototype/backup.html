@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><title>Backup - Zen-iOS</title><link rel="stylesheet" href="core.css">
+    <style>
+        .backup-center { max-width: 600px; margin: 40px auto; display: flex; flex-direction: column; gap: 32px; }
+        .progress-island { background: var(--card-bg); padding: 40px; border-radius: var(--radius-xl); border: 1px solid var(--line); text-align: center; box-shadow: var(--shadow-float); }
+        .ios-progress { height: 6px; background: var(--bg-base); border-radius: 3px; margin: 24px 0; overflow: hidden; }
+        .ios-progress-bar { height: 100%; width: 65%; background: var(--accent); border-radius: 3px; box-shadow: 0 0 12px rgba(0,122,255,0.4); }
+    </style>
+</head>
+<body>
+    <div class="blob"></div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="eyebrow">Professional</div><h1>Doggy Box</h1></div>
+            <nav style="margin-top: 40px;">
+                <ul class="nav-list">
+                    <li><a href="workbench.html" class="nav-link"><span>🛠️</span> 开发工具</a></li>
+                    <li><a href="commands.html" class="nav-link"><span>💻</span> 命令管理</a></li>
+                    <li><a href="http-lab.html" class="nav-link"><span>🌐</span> HTTP 实验室</a></li>
+                    <li><a href="ai-chat.html" class="nav-link"><span>🧠</span> AI 灵感空间</a></li>
+                    <li><a href="credentials.html" class="nav-link"><span>🔐</span> 凭证管理器</a></li>
+                    <li><a href="prompts.html" class="nav-link"><span>📝</span> Prompt 模板</a></li>
+                    <li><a href="backup.html" class="nav-link active"><span>☁️</span> 备份与迁移</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main class="viewport">
+            <header class="view-header"><div class="eyebrow">Cloud Synchronization</div></header>
+            <div class="view-content fade-in">
+                <div class="backup-center">
+                    <div class="header-group" style="text-align:center;"><h2>备份与云迁移</h2><p style="color:var(--text-muted);">所有本地凭证、命令和 Prompt 均受端到端加密保护。</p></div>
+                    <div class="progress-island">
+                        <div style="font-size:48px; margin-bottom:12px;">☁️</div>
+                        <div style="font-weight:800; font-size:20px;">正在同步至本地私有云</div>
+                        <div class="ios-progress"><div class="ios-progress-bar"></div></div>
+                        <div style="font-size:13px; color:var(--text-muted);">已完成 65% · 剩余约 12 秒</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                        <div class="zen-card" style="text-align:center;">导出本地数据</div>
+                        <div class="zen-card" style="text-align:center;">导入外部备份</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

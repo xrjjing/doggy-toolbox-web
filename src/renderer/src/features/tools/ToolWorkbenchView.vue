@@ -4,8 +4,6 @@ import { useRoute } from 'vue-router'
 import {
   NButton,
   NCard,
-  NDrawer,
-  NDrawerContent,
   NIcon,
   NInput,
   NRadioButton,
@@ -112,7 +110,7 @@ const output = ref('')
 const extra = ref('')
 const hashAlgorithm = ref<'md5' | 'sha256'>('md5')
 const aiProvider = ref<AiProviderKind>('codex')
-const toolPickerVisible = ref(false)
+const draggingCategory = ref<ToolCategoryKey | null>(null)
 const advancedPanelTools = new Set<ToolKind>([
   'qrcode',
   'img-base64',
@@ -179,7 +177,20 @@ function updatePanelSnapshot(snapshot: ToolPanelSnapshot): void {
 
 function selectTool(tool: ToolKind): void {
   activeTool.value = tool
-  toolPickerVisible.value = false
+}
+
+function handleCategoryDragStart(category: ToolCategoryKey): void {
+  draggingCategory.value = category
+}
+
+function handleCategoryDrop(targetCategory: ToolCategoryKey): void {
+  if (!draggingCategory.value || draggingCategory.value === targetCategory) return
+  const sourceIndex = toolCategories.findIndex((item) => item.key === draggingCategory.value)
+  const targetIndex = toolCategories.findIndex((item) => item.key === targetCategory)
+  if (sourceIndex < 0 || targetIndex < 0) return
+  const [source] = toolCategories.splice(sourceIndex, 1)
+  toolCategories.splice(targetIndex, 0, source)
+  draggingCategory.value = null
 }
 
 /**
@@ -500,7 +511,6 @@ onBeforeUnmount(() => {
 
 watch(() => route.query.tool, syncToolFromRoute, { immediate: true })
 watch(activeCategory, (category) => {
-  toolPickerVisible.value = false
   if (!activeCategoryTools.value.some((tool) => tool.key === activeTool.value)) {
     activeTool.value =
       groupedTools.value.find((group) => group.key === category)?.tools[0]?.key ?? activeTool.value
@@ -509,16 +519,30 @@ watch(activeCategory, (category) => {
 </script>
 
 <template>
-  <div class="tool-workbench">
+  <div class="tool-workbench-shell">
     <NCard class="soft-card workbench-categories" :bordered="false">
-      <template #header>工具分类</template>
+      <template #header>
+        <div class="card-title-row">
+          <div>
+            <p class="eyebrow">tool rails</p>
+            <strong>工具分类</strong>
+          </div>
+          <NTag size="small" :bordered="false">{{ groupedTools.length }} 组</NTag>
+        </div>
+      </template>
       <div class="tool-category-list">
         <button
           v-for="group in groupedTools"
           :key="group.key"
           class="tool-category-tab"
           :class="{ active: group.key === activeCategory }"
+          :data-dragging="draggingCategory === group.key ? 'true' : 'false'"
+          draggable="true"
           type="button"
+          @dragstart="handleCategoryDragStart(group.key)"
+          @dragover.prevent
+          @dragend="draggingCategory = null"
+          @drop.prevent="handleCategoryDrop(group.key)"
           @click="activeCategory = group.key"
         >
           <div class="tool-category-icon">
@@ -532,7 +556,7 @@ watch(activeCategory, (category) => {
       </div>
     </NCard>
 
-    <div class="tool-workbench-shell">
+    <div class="tool-workbench-main">
       <NCard class="soft-card workbench-main" :bordered="false">
         <template #header>
           <div class="tool-workbench-header">
@@ -542,9 +566,6 @@ watch(activeCategory, (category) => {
             </div>
             <div class="workbench-header-actions">
               <NTag size="small" :bordered="false">{{ activeCategoryTools.length }} 个工具</NTag>
-              <NButton secondary round class="workbench-drawer-trigger" @click="toolPickerVisible = true">
-                切换工具
-              </NButton>
             </div>
           </div>
         </template>
@@ -552,7 +573,7 @@ watch(activeCategory, (category) => {
         <NSpace vertical size="large">
           <section class="tool-current-overview">
             <div class="tool-current-copy">
-              <p class="eyebrow">current tool</p>
+              <p class="eyebrow">available modules</p>
               <strong>{{ activeDefinition.title }}</strong>
               <p>{{ activeDefinition.description }}</p>
             </div>
@@ -560,6 +581,23 @@ watch(activeCategory, (category) => {
               <NTag size="small" :bordered="false">{{ activeCategoryMeta.label }}</NTag>
               <NTag size="small" :bordered="false">{{ activeDefinition.accent }}</NTag>
             </div>
+          </section>
+
+          <section class="tool-grid-rail">
+            <button
+              v-for="tool in activeCategoryTools"
+              :key="tool.key"
+              class="tool-grid-card"
+              :class="{ active: tool.key === activeTool }"
+              type="button"
+              @click="selectTool(tool.key)"
+            >
+              <div class="tool-icon-box">{{ tool.title.slice(0, 1) }}</div>
+              <div class="tool-grid-copy">
+                <strong>{{ tool.title }}</strong>
+                <p>{{ tool.description }}</p>
+              </div>
+            </button>
           </section>
 
           <NSelect
@@ -572,29 +610,31 @@ watch(activeCategory, (category) => {
           />
 
           <template v-if="!usesAdvancedPanel">
-            <NInput
-              v-model:value="input"
-              type="textarea"
-              :autosize="{ minRows: 6, maxRows: 12 }"
-              placeholder="输入内容，点击“运行工具”查看结果"
-            />
+            <section class="tool-workbench-stage">
+              <NInput
+                v-model:value="input"
+                type="textarea"
+                :autosize="{ minRows: 6, maxRows: 12 }"
+                placeholder="输入内容，点击“运行工具”查看结果"
+              />
 
-            <div class="action-row">
-              <NButton type="primary" @click="runTool">运行工具</NButton>
-              <NButton secondary @click="fillExample">填充示例</NButton>
-              <NButton tertiary @click="clearTool">清空</NButton>
-            </div>
+              <div class="action-row">
+                <NButton type="primary" @click="runTool">运行工具</NButton>
+                <NButton secondary @click="fillExample">填充示例</NButton>
+                <NButton tertiary @click="clearTool">清空</NButton>
+              </div>
 
-            <div class="tool-output-grid">
-              <section>
-                <p class="eyebrow">result</p>
-                <pre class="stream-output">{{ output || '等待运行结果...' }}</pre>
-              </section>
-              <section>
-                <p class="eyebrow">extra</p>
-                <pre class="stream-output">{{ extra || '这里显示校验、预览或反向结果...' }}</pre>
-              </section>
-            </div>
+              <div class="tool-output-grid">
+                <section>
+                  <p class="eyebrow">result</p>
+                  <pre class="stream-output">{{ output || '等待运行结果...' }}</pre>
+                </section>
+                <section>
+                  <p class="eyebrow">extra</p>
+                  <pre class="stream-output">{{ extra || '这里显示校验、预览或反向结果...' }}</pre>
+                </section>
+              </div>
+            </section>
           </template>
 
           <QrCodeToolPanel v-else-if="activeTool === 'qrcode'" @snapshot="updatePanelSnapshot" />
@@ -631,85 +671,58 @@ watch(activeCategory, (category) => {
             @snapshot="updatePanelSnapshot"
           />
 
-          <section class="tool-ai-assist">
-            <div class="card-title-row">
-              <div>
-                <p class="eyebrow">local ai assist</p>
-                <h3>AI 结果复核</h3>
-              </div>
-              <NTag size="small" :bordered="false">本机 SDK</NTag>
-            </div>
-
-            <p class="muted">
-              把当前工具名、输入、result 和 extra 组织成 prompt，交给本机 Codex / Claude Code SDK
-              做结果解释、异常判断和下一步建议。
-            </p>
-
-            <div class="tool-ai-toolbar">
-              <NRadioGroup v-model:value="aiProvider">
-                <NRadioButton value="codex">Codex SDK</NRadioButton>
-                <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
-              </NRadioGroup>
-              <div class="action-row">
-                <NButton
-                  type="primary"
-                  :loading="aiStore.running"
-                  :disabled="!aiSettingsStore.isFeatureEnabled('tools')"
-                  @click="startAiAssist"
-                >
-                  让 {{ aiProviderLabel }} 分析
-                </NButton>
-                <NButton secondary :disabled="!aiStore.running" @click="cancelAiAssist">
-                  取消
-                </NButton>
-              </div>
-            </div>
-
-            <div v-if="aiStore.activeSession" class="ai-runtime-grid">
-              <NStatistic label="提供方" :value="aiStore.activeSession.provider" />
-              <NStatistic label="阶段" :value="aiPhaseLabel" />
-              <NStatistic label="模型" :value="aiStore.runtime?.model || '跟随本机配置'" />
-              <NStatistic label="输出 Tokens" :value="aiStore.usage?.outputTokens ?? 0" />
-            </div>
-
-            <pre class="stream-output tool-ai-output">{{
-              aiStore.output || '等待 AI 分析。会话会同步保存到 AI SDK Bridge 验证台。'
-            }}</pre>
-          </section>
         </NSpace>
       </NCard>
-    </div>
 
-    <NDrawer v-model:show="toolPickerVisible" class="workbench-drawer" placement="right" :width="380">
-      <NDrawerContent closable title="切换工具">
-        <div class="tool-subnav-section">
-          <div class="tool-subnav-head">
-            <p class="eyebrow">current category</p>
-            <div class="tool-workbench-title">
-              <strong>{{ activeCategoryMeta.label }}</strong>
-              <p>{{ activeCategoryMeta.description }}</p>
+      <NCard class="soft-card tool-ai-assist-card" :bordered="false">
+        <template #header>
+          <div class="card-title-row">
+            <div>
+              <p class="eyebrow">local ai assist</p>
+              <h3>AI 结果复核</h3>
             </div>
-            <p class="tool-drawer-hint">点击工具后立即切换，并自动收起抽屉。</p>
+            <NTag size="small" :bordered="false">AI Chat</NTag>
+          </div>
+        </template>
+
+        <section class="tool-ai-assist">
+          <p class="muted">
+            把当前工具名、输入、result 和 extra 组织成 prompt，交给本机 Codex / Claude Code SDK
+            做结果解释、异常判断和下一步建议。
+          </p>
+
+          <div class="tool-ai-toolbar">
+            <NRadioGroup v-model:value="aiProvider">
+              <NRadioButton value="codex">Codex SDK</NRadioButton>
+              <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
+            </NRadioGroup>
+            <div class="action-row">
+              <NButton
+                type="primary"
+                :loading="aiStore.running"
+                :disabled="!aiSettingsStore.isFeatureEnabled('tools')"
+                @click="startAiAssist"
+              >
+                让 {{ aiProviderLabel }} 分析
+              </NButton>
+              <NButton secondary :disabled="!aiStore.running" @click="cancelAiAssist">
+                取消
+              </NButton>
+            </div>
           </div>
 
-          <div class="tool-nav-list tool-drawer-list">
-            <button
-              v-for="tool in activeCategoryTools"
-              :key="tool.key"
-              class="tool-nav-item"
-              :class="{ active: tool.key === activeTool }"
-              type="button"
-              @click="selectTool(tool.key)"
-            >
-              <div>
-                <strong>{{ tool.title }}</strong>
-                <p>{{ tool.description }}</p>
-              </div>
-              <NTag size="small" :bordered="false">{{ tool.accent }}</NTag>
-            </button>
+          <div v-if="aiStore.activeSession" class="ai-runtime-grid tool-ai-runtime-grid">
+            <NStatistic label="提供方" :value="aiStore.activeSession.provider" />
+            <NStatistic label="阶段" :value="aiPhaseLabel" />
+            <NStatistic label="模型" :value="aiStore.runtime?.model || '跟随本机配置'" />
+            <NStatistic label="输出 Tokens" :value="aiStore.usage?.outputTokens ?? 0" />
           </div>
-        </div>
-      </NDrawerContent>
-    </NDrawer>
+
+          <pre class="stream-output tool-ai-output">{{
+            aiStore.output || '等待 AI 分析。会话会同步保存到 AI Chat 页面。'
+          }}</pre>
+        </section>
+      </NCard>
+    </div>
   </div>
 </template>

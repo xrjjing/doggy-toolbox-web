@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -12,7 +12,6 @@ import {
   NSpace,
   NTimeline,
   NTimelineItem,
-  NTag,
   NText,
   useMessage
 } from 'naive-ui'
@@ -68,6 +67,23 @@ const stats = computed(() => ({
       : '本机明文 JSON'
 }))
 const isEdit = computed(() => Boolean(form.id))
+const activeCredentialId = ref('')
+const activeCredential = computed(
+  () =>
+    credentialsStore.visibleCredentials.find((credential) => credential.id === activeCredentialId.value) ??
+    credentialsStore.visibleCredentials[0] ??
+    null
+)
+
+watch(
+  () => credentialsStore.visibleCredentials.map((credential) => credential.id).join('|'),
+  () => {
+    if (!credentialsStore.visibleCredentials.some((credential) => credential.id === activeCredentialId.value)) {
+      activeCredentialId.value = credentialsStore.visibleCredentials[0]?.id ?? ''
+    }
+  },
+  { immediate: true }
+)
 
 function formatUpdatedAt(value: string): string {
   if (!value) return '等待首次保存'
@@ -196,154 +212,136 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="page-heading">
-    <p class="eyebrow">credentials repository</p>
-    <h2>凭证管理</h2>
-    <p>
-      从旧项目的“密码管理”模块迁移而来。当前实现先覆盖核心增删改查、搜索、复制和本地落盘，
-      批量导入、拖拽排序会在 P2 的导入助手与备份恢复阶段继续补齐。
-    </p>
-  </section>
-
-  <section class="commands-summary-grid">
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>凭证总数</strong>
-        <span>{{ stats.total }}</span>
-      </div>
-      <p>字段沿用旧项目：服务、URL、账号、密码和附加信息。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>当前视图</strong>
-        <span>{{ stats.visible }}</span>
-      </div>
-      <p>支持按服务名、URL、账号、密码和附加信息搜索。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>密码编码</strong>
-        <span>{{ stats.secretEncoding }}</span>
-      </div>
-      <p>Electron 环境优先使用 safeStorage；不可用时降级为本机 JSON 明文。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>迁移补齐</strong>
-        <span>旧体验</span>
-      </div>
-      <p>已补回批量文本导入、顺序调整和更清晰的附加信息时间线展示。</p>
-    </article>
-  </section>
-
   <div class="credentials-shell">
-    <NCard class="soft-card commands-toolbar" :bordered="false">
-      <div class="commands-toolbar-row">
-        <NInput
-          :value="credentialsStore.search"
-          clearable
-          placeholder="搜索服务名、URL、账号、密码或附加信息"
-          @update:value="credentialsStore.setSearch"
-        />
-        <NSpace>
-          <!-- 刷新会重新获取主进程解码后的凭证快照，renderer 不自行缓存独立副本。 -->
-          <NButton secondary :loading="credentialsStore.loading" @click="credentialsStore.load">
-            刷新
-          </NButton>
-          <NButton secondary @click="importModalVisible = true">批量导入</NButton>
-          <NButton type="primary" @click="openCreateModal">新增凭证</NButton>
-        </NSpace>
-      </div>
-    </NCard>
-
-    <div v-if="credentialsStore.visibleCredentials.length > 0" class="credentials-grid">
-      <!-- 当前卡片列表是 store 基于搜索条件派生出的可见子集。 -->
-      <NCard
-        v-for="credential in credentialsStore.visibleCredentials"
-        :key="credential.id"
-        class="soft-card credential-card"
-        :bordered="false"
-      >
-        <template #header>
-          <div class="card-title-row">
-            <div>
-              <strong>{{ credential.service }}</strong>
-              <p class="muted">{{ credential.url || '未填写 URL' }}</p>
-            </div>
-            <NTag size="small" :bordered="false">#{{ credential.order + 1 }}</NTag>
+    <div class="credentials-main">
+      <NCard class="soft-card commands-toolbar" :bordered="false">
+        <div class="commands-toolbar-row">
+          <div class="commands-toolbar-copy">
+            <p class="eyebrow">credential vault</p>
+            <strong>{{ stats.visible }} 条可见凭证</strong>
+            <span>{{ stats.total }} 条总记录 · {{ stats.secretEncoding }}</span>
           </div>
-        </template>
-
-        <div class="credential-fields">
-          <div>
-            <NText depth="3">账号</NText>
-            <strong>{{ credential.account || '未填写' }}</strong>
-          </div>
-          <div>
-            <NText depth="3">密码</NText>
-            <strong>{{
-              isRevealed(credential.id)
-                ? credential.password || '未填写'
-                : maskPassword(credential.password)
-            }}</strong>
-          </div>
-        </div>
-
-        <div v-if="credential.extra.length > 0" class="chip-list credential-extra">
-          <NTimeline size="medium">
-            <NTimelineItem v-for="line in credential.extra" :key="line" type="info">
-              {{ line }}
-            </NTimelineItem>
-          </NTimeline>
-        </div>
-
-        <div class="action-row">
-          <NButton size="small" secondary @click="copyText(credential.account, '账号')"
-            >复制账号</NButton
-          >
-          <NButton size="small" secondary @click="copyText(credential.password, '密码')"
-            >复制密码</NButton
-          >
-          <NButton
-            size="small"
-            quaternary
-            :disabled="credentialsStore.credentials[0]?.id === credential.id"
-            @click="rotateCredentialOrder('up', credential.id)"
-          >
-            上移
-          </NButton>
-          <NButton
-            size="small"
-            quaternary
-            :disabled="
-              credentialsStore.credentials[credentialsStore.credentials.length - 1]?.id ===
-              credential.id
-            "
-            @click="rotateCredentialOrder('down', credential.id)"
-          >
-            下移
-          </NButton>
-          <NButton size="small" secondary @click="toggleReveal(credential.id)">
-            {{ isRevealed(credential.id) ? '隐藏' : '显示' }}
-          </NButton>
-          <NButton size="small" secondary @click="openEditModal(credential)">编辑</NButton>
-          <NPopconfirm @positive-click="deleteCredential(credential.id)">
-            <template #trigger>
-              <NButton size="small" tertiary type="error">删除</NButton>
-            </template>
-            删除这条凭证记录后不会自动进入备份，确定继续？
-          </NPopconfirm>
+          <NInput
+            :value="credentialsStore.search"
+            clearable
+            placeholder="搜索服务名、URL、账号、密码或附加信息"
+            @update:value="credentialsStore.setSearch"
+          />
+          <NSpace>
+            <!-- 刷新会重新获取主进程解码后的凭证快照，renderer 不自行缓存独立副本。 -->
+            <NButton secondary :loading="credentialsStore.loading" @click="credentialsStore.load">
+              刷新
+            </NButton>
+            <NButton secondary @click="importModalVisible = true">批量导入</NButton>
+            <NButton type="primary" @click="openCreateModal">新增凭证</NButton>
+          </NSpace>
         </div>
       </NCard>
-    </div>
 
-    <NCard v-else class="soft-card command-empty-card" :bordered="false">
-      <NEmpty description="当前筛选条件下还没有凭证">
-        <template #extra>
-          <NButton type="primary" @click="openCreateModal">先创建第一条凭证</NButton>
-        </template>
-      </NEmpty>
-    </NCard>
+      <div v-if="credentialsStore.visibleCredentials.length > 0" class="credentials-vault">
+        <section class="credentials-list-panel">
+          <button
+            v-for="credential in credentialsStore.visibleCredentials"
+            :key="credential.id"
+            class="vault-row"
+            :class="{ active: activeCredential?.id === credential.id }"
+            type="button"
+            @click="activeCredentialId = credential.id"
+          >
+            <div class="vault-row-main">
+              <div class="vault-row-icon">{{ credential.service.slice(0, 1).toUpperCase() }}</div>
+              <div>
+                <strong>{{ credential.service }}</strong>
+                <p>{{ credential.url || credential.account || '未填写 URL / 账号' }}</p>
+              </div>
+            </div>
+            <div class="vault-row-secret">
+              <span class="secret-mask">{{ maskPassword(credential.password) }}</span>
+            </div>
+          </button>
+        </section>
+
+        <section v-if="activeCredential" class="credentials-detail-surface">
+          <div class="credentials-detail-head">
+            <div>
+              <p class="eyebrow">vault detail</p>
+              <strong>{{ activeCredential.service }}</strong>
+              <p class="muted">{{ activeCredential.url || '未填写 URL' }}</p>
+            </div>
+            <span class="vault-index-pill">#{{ activeCredential.order + 1 }}</span>
+          </div>
+
+          <div class="credential-fields">
+            <div>
+              <NText depth="3">账号</NText>
+              <strong>{{ activeCredential.account || '未填写' }}</strong>
+            </div>
+            <div>
+              <NText depth="3">密码</NText>
+              <strong class="secret-mask secret-mask--detail">{{
+                isRevealed(activeCredential.id)
+                  ? activeCredential.password || '未填写'
+                  : maskPassword(activeCredential.password)
+              }}</strong>
+            </div>
+          </div>
+
+          <div v-if="activeCredential.extra.length > 0" class="chip-list credential-extra">
+            <NTimeline size="medium">
+              <NTimelineItem v-for="line in activeCredential.extra" :key="line" type="info">
+                {{ line }}
+              </NTimelineItem>
+            </NTimeline>
+          </div>
+
+          <div class="action-row">
+            <NButton size="small" secondary @click="copyText(activeCredential.account, '账号')">
+              复制账号
+            </NButton>
+            <NButton size="small" secondary @click="copyText(activeCredential.password, '密码')">
+              复制密码
+            </NButton>
+            <NButton
+              size="small"
+              quaternary
+              :disabled="credentialsStore.credentials[0]?.id === activeCredential.id"
+              @click="rotateCredentialOrder('up', activeCredential.id)"
+            >
+              上移
+            </NButton>
+            <NButton
+              size="small"
+              quaternary
+              :disabled="
+                credentialsStore.credentials[credentialsStore.credentials.length - 1]?.id ===
+                activeCredential.id
+              "
+              @click="rotateCredentialOrder('down', activeCredential.id)"
+            >
+              下移
+            </NButton>
+            <NButton size="small" secondary @click="toggleReveal(activeCredential.id)">
+              {{ isRevealed(activeCredential.id) ? '隐藏' : '显示' }}
+            </NButton>
+            <NButton size="small" secondary @click="openEditModal(activeCredential)">编辑</NButton>
+            <NPopconfirm @positive-click="deleteCredential(activeCredential.id)">
+              <template #trigger>
+                <NButton size="small" tertiary type="error">删除</NButton>
+              </template>
+              删除这条凭证记录后不会自动进入备份，确定继续？
+            </NPopconfirm>
+          </div>
+        </section>
+      </div>
+
+      <NCard v-else class="soft-card command-empty-card" :bordered="false">
+        <NEmpty description="当前筛选条件下还没有凭证">
+          <template #extra>
+            <NButton type="primary" @click="openCreateModal">先创建第一条凭证</NButton>
+          </template>
+        </NEmpty>
+      </NCard>
+    </div>
 
     <NCard class="soft-card credentials-meta-card" :bordered="false">
       <template #header>本地文件</template>

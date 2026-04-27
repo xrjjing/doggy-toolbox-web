@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat - Zen-iOS Hybrid</title>
+    <link rel="stylesheet" href="core.css">
+    <style>
+        .chat-shell { flex: 1; display: flex; flex-direction: column; gap: 24px; position: relative; }
+        .ai-config-bar { background: var(--glass); backdrop-filter: blur(20px); padding: 16px 24px; border-radius: 20px; border: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+        .model-pill { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; cursor: pointer; }
+        .chat-flow { flex: 1; display: flex; flex-direction: column; gap: 20px; padding-bottom: 100px; overflow-y: auto; }
+        .bubble { max-width: 75%; padding: 18px 24px; border-radius: 28px; line-height: 1.6; font-size: 15px; position: relative; animation: slideIn 0.4s var(--ease-ios); }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .bubble-ai { align-self: flex-start; background: var(--card-bg); border: 1px solid var(--line); border-bottom-left-radius: 4px; box-shadow: var(--shadow-soft); }
+        .bubble-user { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; box-shadow: 0 8px 24px rgba(0,122,255,0.2); }
+        .input-island { position: absolute; bottom: 0; left: 0; right: 0; height: 72px; background: var(--glass); backdrop-filter: blur(30px); border-radius: var(--radius-pill); border: 1px solid var(--line); display: flex; align-items: center; padding: 0 12px 0 28px; box-shadow: 0 30px 60px rgba(0,0,0,0.12); }
+        .input-island input { flex: 1; background: transparent; border: none; outline: none; color: var(--text-main); font-size: 16px; }
+        .send-pill { width: 48px; height: 48px; background: var(--text-main); color: var(--card-bg); border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; transition: 0.3s; }
+        .send-pill:hover { transform: scale(1.1); }
+    </style>
+</head>
+<body>
+    <div class="blob"></div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="eyebrow">Professional</div><h1>Doggy Box</h1></div>
+            <nav style="margin-top: 40px;">
+                <ul class="nav-list">
+                    <li><a href="workbench.html" class="nav-link"><span>🛠️</span> 开发工具</a></li>
+                    <li><a href="commands.html" class="nav-link"><span>💻</span> 命令管理</a></li>
+                    <li><a href="http-lab.html" class="nav-link"><span>🌐</span> HTTP 实验室</a></li>
+                    <li><a href="ai-chat.html" class="nav-link active"><span>🧠</span> AI 灵感空间</a></li>
+                    <li><a href="credentials.html" class="nav-link"><span>🔐</span> 凭证管理器</a></li>
+                    <li><a href="prompts.html" class="nav-link"><span>📝</span> Prompt 模板</a></li>
+                    <li><a href="backup.html" class="nav-link"><span>☁️</span> 备份与迁移</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main class="viewport">
+            <header class="view-header"><div class="eyebrow">Neural Core</div><div style="display:flex; gap:12px;"><button style="width:40px; height:40px; border-radius:50%; border:none; background:var(--text-main); color:var(--card-bg);">👤</button></div></header>
+            <div class="view-content fade-in">
+                <div class="chat-shell">
+                    <div class="ai-config-bar">
+                        <div class="model-pill"><div style="width:32px; height:32px; background:#000; border-radius:8px; display:flex; align-items:center; justify-content:center; color:white;">G</div> GPT-4o Omnis ▾</div>
+                        <div style="display:flex; align-items:center; gap:16px;">
+                            <span class="eyebrow" style="margin:0">Logic Depth</span>
+                            <div style="width:100px; height:4px; background:var(--line); border-radius:2px; position:relative;"><div style="position:absolute; left:0; top:0; bottom:0; width:70%; background:var(--accent); border-radius:2px;"></div><div style="position:absolute; left:70%; top:50%; width:16px; height:16px; background:white; border:3px solid var(--accent); border-radius:50%; transform:translate(-50%,-50%); shadow:var(--shadow-soft);"></div></div>
+                        </div>
+                    </div>
+                    <div class="chat-flow">
+                        <div class="bubble bubble-ai">你好！我是你的 AI 创意引擎。我已经根据当前的 Zen 设计规范优化了所有的交互逻辑。</div>
+                        <div class="bubble bubble-user">帮我写一个基于 CSS 变量的主题切换函数，要求带阻尼动画。</div>
+                        <div class="bubble bubble-ai">
+                            没问题。为了实现 iOS 风格的丝滑感，我们需要配合 `cubic-bezier` 动画曲线。
+<pre style="background:rgba(0,0,0,0.03); padding:16px; border-radius:12px; margin-top:12px; font-family:var(--font-mono); font-size:13px;">
+function toggleZenTheme() {
+  document.body.classList.toggle('dark-mode');
+  // 注入物理回弹动画...
+}
+</pre>
+                        </div>
+                    </div>
+                    <div class="input-island"><input type="text" placeholder="描述你的开发创意..."><button class="send-pill">↑</button></div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

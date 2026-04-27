@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><title>Prompts - Zen-iOS</title><link rel="stylesheet" href="core.css">
+    <style>
+        .editor-shell { flex: 1; display: flex; gap: 24px; height: 100%; }
+        .prompt-list { width: 280px; display: flex; flex-direction: column; gap: 12px; }
+        .editor-main { flex: 1; background: var(--card-bg); border-radius: var(--radius-lg); border: 1px solid var(--line); display: flex; flex-direction: column; box-shadow: var(--shadow-soft); }
+        .editor-header { padding: 20px 32px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+        .editor-body { flex: 1; padding: 32px; font-family: var(--font-mono); font-size: 15px; color: var(--text-main); line-height: 1.8; outline: none; }
+        .variable-chip { color: var(--accent); font-weight: 700; background: rgba(0,122,255,0.05); padding: 2px 6px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="blob"></div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="eyebrow">Professional</div><h1>Doggy Box</h1></div>
+            <nav style="margin-top: 40px;">
+                <ul class="nav-list">
+                    <li><a href="workbench.html" class="nav-link"><span>🛠️</span> 开发工具</a></li>
+                    <li><a href="commands.html" class="nav-link"><span>💻</span> 命令管理</a></li>
+                    <li><a href="http-lab.html" class="nav-link"><span>🌐</span> HTTP 实验室</a></li>
+                    <li><a href="ai-chat.html" class="nav-link"><span>🧠</span> AI 灵感空间</a></li>
+                    <li><a href="credentials.html" class="nav-link"><span>🔐</span> 凭证管理器</a></li>
+                    <li><a href="prompts.html" class="nav-link active"><span>📝</span> Prompt 模板</a></li>
+                    <li><a href="backup.html" class="nav-link"><span>☁️</span> 备份与迁移</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main class="viewport">
+            <header class="view-header"><div class="eyebrow">Prompt Engineering</div></header>
+            <div class="view-content fade-in">
+                <div class="editor-shell">
+                    <div class="prompt-list">
+                        <div class="zen-card" style="padding:16px;"><div style="font-weight:700; font-size:14px;">TypeScript 优化</div><div style="font-size:11px; color:var(--text-muted); margin-top:4px;">专注于物理动画与类型安全</div></div>
+                        <div class="zen-card" style="padding:16px; border-color:var(--accent);"><div style="font-weight:700; font-size:14px;">SQL 架构生成</div><div style="font-size:11px; color:var(--text-muted); margin-top:4px;">高性能查询优化器</div></div>
+                    </div>
+                    <div class="editor-main">
+                        <div class="editor-header"><div style="font-weight:800;">Template Editor</div><button class="primary-btn">保存变更</button></div>
+                        <div class="editor-body" contenteditable="true">
+                            作为一名资深的数据库专家，请帮我优化以下 <span class="variable-chip">{{schema_name}}</span> 的查询逻辑。<br><br>
+                            要求：<br>
+                            1. 减少 <span class="variable-chip">{{join_count}}</span> 次关联查询。<br>
+                            2. 必须符合 3NF 范式。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

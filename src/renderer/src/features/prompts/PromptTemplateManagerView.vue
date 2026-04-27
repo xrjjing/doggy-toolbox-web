@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -98,6 +98,23 @@ const activeCategoryLabel = computed(() => promptsStore.activeCategory?.name ?? 
 const currentVariables = computed(() => currentTemplate.value?.variables ?? [])
 const isTemplateEdit = computed(() => Boolean(templateForm.id))
 const isCategoryEdit = computed(() => Boolean(categoryForm.id))
+const activeTemplateId = ref('')
+const activeTemplate = computed(
+  () =>
+    promptsStore.visibleTemplates.find((template) => template.id === activeTemplateId.value) ??
+    promptsStore.visibleTemplates[0] ??
+    null
+)
+
+watch(
+  () => promptsStore.visibleTemplates.map((template) => template.id).join('|'),
+  () => {
+    if (!promptsStore.visibleTemplates.some((template) => template.id === activeTemplateId.value)) {
+      activeTemplateId.value = promptsStore.visibleTemplates[0]?.id ?? ''
+    }
+  },
+  { immediate: true }
+)
 
 function formatUpdatedAt(value: string): string {
   if (!value) return '等待首次保存'
@@ -383,7 +400,7 @@ async function reviewPromptsWithAi(): Promise<void> {
       title: 'Prompt 模板 AI 审查',
       prompt
     })
-    message.success('Prompt 模板已发送到 AI Bridge，请到 AI 页面查看会话结果。')
+    message.success('Prompt 模板已发送到 AI Chat，请到 AI 页面查看会话结果。')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -406,46 +423,6 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="page-heading">
-    <p class="eyebrow">prompt templates</p>
-    <h2>Prompt 模板库</h2>
-    <p>
-      迁移旧项目的 Prompt 模板能力：分类、模板、收藏、变量解析与填充。后续会接入 AI
-      聊天页和统一备份协议。
-    </p>
-  </section>
-
-  <section class="commands-summary-grid">
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>分类</strong>
-        <span>{{ stats.categories }}</span>
-      </div>
-      <p>默认分类来自旧项目，支持继续新增和维护。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>模板</strong>
-        <span>{{ stats.templates }}</span>
-      </div>
-      <p>内置代码解释、代码优化、翻译润色、会议纪要等系统模板。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>当前视图</strong>
-        <span>{{ stats.visible }}</span>
-      </div>
-      <p>当前分类：{{ activeCategoryLabel }}；收藏数：{{ stats.favorites }}。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>迁移补齐</strong>
-        <span>旧体验</span>
-      </div>
-      <p>已补回分类排序、模板排序、导入导出和“另存为模板”入口。</p>
-    </article>
-  </section>
-
   <div class="prompts-shell">
     <NCard class="soft-card prompts-sidebar" :bordered="false">
       <template #header>
@@ -521,78 +498,98 @@ onMounted(() => {
     <div class="prompts-main">
       <NCard class="soft-card commands-toolbar" :bordered="false">
         <div class="prompts-toolbar-row">
+          <div class="commands-toolbar-copy">
+            <p class="eyebrow">prompt studio</p>
+            <strong>{{ activeCategoryLabel }}</strong>
+            <span>{{ stats.visible }} / {{ stats.templates }} 个模板 · 收藏 {{ stats.favorites }}</span>
+          </div>
           <NInput
             :value="promptsStore.search"
             clearable
             placeholder="搜索标题、描述、标签或 Prompt 内容"
             @update:value="promptsStore.setSearch"
           />
-          <NCheckbox
-            :checked="promptsStore.favoritesOnly"
-            @update:checked="promptsStore.setFavoritesOnly"
-          >
-            仅收藏
-          </NCheckbox>
-          <NSpace>
-            <!-- 刷新会重新同步分类、模板、收藏状态以及 storageFile / updatedAt。 -->
-            <NButton secondary :loading="promptsStore.loading" @click="promptsStore.load"
-              >刷新</NButton
+          <div class="prompts-toolbar-actions">
+            <NCheckbox
+              :checked="promptsStore.favoritesOnly"
+              @update:checked="promptsStore.setFavoritesOnly"
             >
-            <NButton secondary @click="exportTemplates">导出 JSON</NButton>
-            <NButton secondary @click="importModalVisible = true">导入 JSON</NButton>
-            <NButton
-              secondary
-              :disabled="!aiSettingsStore.isFeatureEnabled('prompts')"
-              @click="reviewPromptsWithAi"
-            >
-              AI 审查
-            </NButton>
-            <NButton type="primary" @click="openCreateTemplateModal">新增模板</NButton>
-          </NSpace>
+              仅收藏
+            </NCheckbox>
+            <NSpace>
+              <!-- 刷新会重新同步分类、模板、收藏状态以及 storageFile / updatedAt。 -->
+              <NButton secondary :loading="promptsStore.loading" @click="promptsStore.load"
+                >刷新</NButton
+              >
+              <NButton secondary @click="exportTemplates">导出 JSON</NButton>
+              <NButton secondary @click="importModalVisible = true">导入 JSON</NButton>
+              <NButton
+                secondary
+                :disabled="!aiSettingsStore.isFeatureEnabled('prompts')"
+                @click="reviewPromptsWithAi"
+              >
+                AI 审查
+              </NButton>
+              <NButton type="primary" @click="openCreateTemplateModal">新增模板</NButton>
+            </NSpace>
+          </div>
         </div>
       </NCard>
 
-      <div v-if="promptsStore.visibleTemplates.length > 0" class="prompts-grid">
-        <!-- 当前模板列表是分类过滤、收藏过滤和搜索过滤叠加后的前端派生结果。 -->
-        <NCard
-          v-for="template in promptsStore.visibleTemplates"
-          :key="template.id"
-          class="soft-card prompt-card"
-          :bordered="false"
-        >
-          <template #header>
-            <div class="card-title-row">
-              <div>
+      <div v-if="promptsStore.visibleTemplates.length > 0" class="prompts-lab">
+        <section class="prompts-list-panel">
+          <button
+            v-for="template in promptsStore.visibleTemplates"
+            :key="template.id"
+            class="prompt-row-card"
+            :class="{ active: activeTemplate?.id === template.id }"
+            type="button"
+            @click="activeTemplateId = template.id"
+          >
+            <div class="prompt-row-main">
+              <div class="prompt-row-top">
                 <strong>{{ template.title }}</strong>
-                <p class="muted">{{ template.description || '未填写描述' }}</p>
+                <span v-if="template.isFavorite" class="prompt-favorite-dot" />
               </div>
-              <NTag size="small" :bordered="false">{{ getCategoryName(template.categoryId) }}</NTag>
+              <p>{{ template.description || '未填写描述' }}</p>
             </div>
-          </template>
+            <span class="prompt-row-meta">{{ template.variables.length }} var</span>
+          </button>
+        </section>
 
-          <div class="chip-list">
-            <span v-for="tag in template.tags" :key="tag" class="chip">{{ tag }}</span>
-            <span v-if="template.variables.length > 0" class="chip">
-              {{ template.variables.length }} 个变量
-            </span>
-            <span v-if="template.isSystem" class="chip">系统模板</span>
+        <section v-if="activeTemplate" class="prompt-editor-surface">
+          <div class="prompt-editor-head">
+            <div>
+              <p class="eyebrow">template editor</p>
+              <strong>{{ activeTemplate.title }}</strong>
+              <p class="muted">{{ activeTemplate.description || '未填写描述' }}</p>
+            </div>
+            <div class="prompt-editor-meta">
+              <span>{{ getCategoryName(activeTemplate.categoryId) }}</span>
+              <span>{{ activeTemplate.variables.length }} 个变量</span>
+            </div>
           </div>
 
-          <pre class="prompt-preview">{{ template.content }}</pre>
+          <div class="chip-list">
+            <span v-for="tag in activeTemplate.tags" :key="tag" class="chip">{{ tag }}</span>
+            <span v-if="activeTemplate.isSystem" class="chip">系统模板</span>
+          </div>
+
+          <pre class="prompt-preview prompt-preview--editor">{{ activeTemplate.content }}</pre>
 
           <div class="action-row">
-            <NButton size="small" type="primary" @click="openUseTemplate(template)">使用</NButton>
-            <NButton size="small" secondary @click="toggleFavorite(template)">
-              {{ template.isFavorite ? '取消收藏' : '收藏' }}
+            <NButton size="small" type="primary" @click="openUseTemplate(activeTemplate)">使用</NButton>
+            <NButton size="small" secondary @click="toggleFavorite(activeTemplate)">
+              {{ activeTemplate.isFavorite ? '取消收藏' : '收藏' }}
             </NButton>
             <NButton
               size="small"
               quaternary
               :disabled="
-                promptsStore.templates.filter((item) => item.categoryId === template.categoryId)[0]
-                  ?.id === template.id
+                promptsStore.templates.filter((item) => item.categoryId === activeTemplate.categoryId)[0]
+                  ?.id === activeTemplate.id
               "
-              @click="rotateTemplateOrder('up', template)"
+              @click="rotateTemplateOrder('up', activeTemplate)"
             >
               上移
             </NButton>
@@ -600,24 +597,24 @@ onMounted(() => {
               size="small"
               quaternary
               :disabled="
-                promptsStore.templates.filter((item) => item.categoryId === template.categoryId)[
-                  promptsStore.templates.filter((item) => item.categoryId === template.categoryId)
+                promptsStore.templates.filter((item) => item.categoryId === activeTemplate.categoryId)[
+                  promptsStore.templates.filter((item) => item.categoryId === activeTemplate.categoryId)
                     .length - 1
-                ]?.id === template.id
+                ]?.id === activeTemplate.id
               "
-              @click="rotateTemplateOrder('down', template)"
+              @click="rotateTemplateOrder('down', activeTemplate)"
             >
               下移
             </NButton>
-            <NButton size="small" secondary @click="openEditTemplateModal(template)">编辑</NButton>
-            <NPopconfirm @positive-click="deleteTemplate(template.id)">
+            <NButton size="small" secondary @click="openEditTemplateModal(activeTemplate)">编辑</NButton>
+            <NPopconfirm @positive-click="deleteTemplate(activeTemplate.id)">
               <template #trigger>
                 <NButton size="small" tertiary type="error">删除</NButton>
               </template>
               删除模板后不会自动进入备份，确定继续？
             </NPopconfirm>
           </div>
-        </NCard>
+        </section>
       </div>
 
       <NCard v-else class="soft-card command-empty-card" :bordered="false">

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doggy Toolbox - Professional Zen-iOS Prototype</title>
+    <style>
+        :root {
+            --bg-base: #F2F2F7;
+            --bg-canvas: #F9F9FB;
+            --glass: rgba(255, 255, 255, 0.7);
+            --glass-blur: blur(40px);
+            --card-bg: #FFFFFF;
+            --text-main: #1C1C1E;
+            --text-muted: #8E8E93;
+            --line: rgba(0, 0, 0, 0.05);
+            --inner-glow: rgba(255, 255, 255, 0.8);
+            --accent: #007AFF;
+            --success: #34C759;
+            --warning: #FF9500;
+            --shadow-soft: 0 20px 40px -12px rgba(0, 0, 0, 0.08);
+            --shadow-float: 0 32px 64px -16px rgba(0, 0, 0, 0.12);
+            --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+            
+            --radius-lg: 32px;
+            --radius-md: 20px;
+            --radius-sm: 14px;
+            --radius-pill: 999px;
+            --font-main: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+            --font-mono: 'SF Mono', 'Fira Code', monospace;
+            --ease-ios: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme='dark'] {
+            --bg-base: #000000;
+            --bg-canvas: #1C1C1E;
+            --glass: rgba(28, 28, 30, 0.8);
+            --card-bg: #2C2C2E;
+            --text-main: #FFFFFF;
+            --text-muted: #98989D;
+            --line: rgba(255, 255, 255, 0.1);
+            --inner-glow: rgba(255, 255, 255, 0.05);
+            --shadow-soft: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        body {
+            margin: 0; background-color: var(--bg-base); font-family: var(--font-main);
+            color: var(--text-main); display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; overflow: hidden; transition: background 0.5s ease;
+        }
+
+        .app-container {
+            width: 1280px; height: 900px; background: var(--bg-canvas);
+            border-radius: 44px; display: flex; position: relative;
+            box-shadow: var(--shadow-soft); border: 1px solid var(--line); overflow: hidden;
+            transition: all 0.5s var(--ease-ios);
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 240px; background: var(--glass);
+            backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+            border-right: 1px solid var(--line); padding: 48px 20px;
+            display: flex; flex-direction: column; gap: 40px; z-index: 20;
+        }
+        .brand h1 { font-size: 22px; font-weight: 900; margin: 0; letter-spacing: -0.04em; }
+        .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+
+        .nav-list { display: flex; flex-direction: column; gap: 4px; padding: 0; margin: 0; list-style: none; }
+        .nav-item {
+            padding: 12px 16px; border-radius: var(--radius-md); font-size: 14px;
+            font-weight: 600; color: var(--text-muted); cursor: pointer;
+            transition: all 0.3s var(--ease-ios); display: flex; align-items: center; gap: 10px;
+        }
+        .nav-item.active { background: var(--card-bg); color: var(--text-main); box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid var(--line); }
+
+        /* 主面板 */
+        .main-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        
+        .view {
+            position: absolute; inset: 0; padding: 40px;
+            opacity: 0; transform: translateY(24px); pointer-events: none;
+            transition: all 0.5s var(--ease-ios);
+            display: flex; flex-direction: column;
+        }
+        .view.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+        /* --- HTTP 实验室升级版 --- */
+        .http-layout { flex: 1; display: flex; gap: 24px; margin-top: 24px; }
+        .sub-sidebar {
+            width: 240px; background: var(--card-bg); border-radius: 28px;
+            border: 1px solid var(--line); padding: 24px; display: flex; flex-direction: column; gap: 24px;
+        }
+        .http-main { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        
+        .req-config { background: var(--card-bg); border-radius: 28px; border: 1px solid var(--line); padding: 24px; }
+        .method-row { display: flex; gap: 12px; margin-bottom: 20px; }
+        .method-select {
+            padding: 0 16px; height: 48px; background: var(--bg-base); border-radius: 14px;
+            border: 1px solid var(--line); font-weight: 800; color: var(--accent); display: flex; align-items: center;
+        }
+        .url-input {
+            flex: 1; height: 48px; background: var(--bg-base); border-radius: 14px;
+            border: 1px solid var(--line); padding: 0 16px; font-family: var(--font-mono); font-size: 14px; outline: none;
+        }
+        
+        .kv-editor { display: flex; flex-direction: column; gap: 8px; }
+        .kv-row { display: flex; gap: 8px; }
+        .kv-row input { flex: 1; height: 36px; background: var(--bg-base); border-radius: 10px; border: 1px solid var(--line); padding: 0 12px; font-size: 12px; }
+
+        .tabs { display: flex; gap: 20px; margin-bottom: 16px; }
+        .tab { font-size: 13px; font-weight: 700; color: var(--text-muted); cursor: pointer; padding-bottom: 8px; position: relative; }
+        .tab.active { color: var(--text-main); }
+        .tab.active::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--text-main); border-radius: 2px; }
+
+        /* --- AI 助手升级版 --- */
+        .ai-toolbar {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--glass); backdrop-filter: blur(20px);
+            padding: 16px 24px; border-radius: 24px; border: 1px solid var(--line); margin-bottom: 24px;
+        }
+        .ai-model-selector {
+            display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 14px; cursor: pointer;
+        }
+        .reasoning-control { display: flex; align-items: center; gap: 16px; flex: 1; justify-content: flex-end; }
+        .slider { width: 120px; height: 4px; background: var(--line); border-radius: 2px; appearance: none; outline: none; }
+        .slider::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; background: var(--accent); border-radius: 50%; border: 3px solid white; box-shadow: var(--shadow-soft); }
+
+        .chat-area { flex: 1; display: flex; flex-direction: column; gap: 20px; padding-bottom: 100px; overflow-y: auto; }
+        .bubble { max-width: 75%; padding: 18px 24px; border-radius: 28px; line-height: 1.6; font-size: 15px; }
+        .bubble-ai { align-self: flex-start; background: var(--card-bg); border: 1px solid var(--line); border-bottom-left-radius: 4px; box-shadow: var(--shadow-soft); }
+        .bubble-user { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
+        
+        .floating-input {
+            position: absolute; bottom: 40px; left: 40px; right: 40px; height: 68px;
+            background: var(--glass); backdrop-filter: blur(30px); border-radius: var(--radius-pill);
+            border: 1px solid var(--line); display: flex; align-items: center; padding: 0 10px 0 28px;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.12);
+        }
+
+        .primary-btn {
+            background: var(--text-main); color: var(--card-bg); border: none; padding: 12px 24px;
+            border-radius: 14px; font-weight: 700; cursor: pointer; transition: all 0.3s;
+        }
+        .primary-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+        /* 列表项 */
+        .list-item { padding: 10px; border-radius: 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: 0.2s; }
+        .list-item:hover { background: var(--bg-base); color: var(--text-main); }
+        .list-item.active { background: var(--accent); color: white; }
+
+        /* 装饰 */
+        .ambient { position: absolute; width: 800px; height: 800px; background: radial-gradient(circle, rgba(0,122,255,0.04) 0%, transparent 70%); filter: blur(100px); z-index: -1; top: -300px; right: -300px; }
+    </style>
+</head>
+<body>
+    <div class="ambient"></div>
+    <div class="app-container">
+        <aside class="sidebar">
+            <header class="brand">
+                <div class="eyebrow">Suite Pro</div>
+                <h1>Doggy Box</h1>
+            </header>
+            <nav>
+                <ul class="nav-list">
+                    <li class="nav-item" onclick="switchView('tools', this)"><span>🛠️</span> 开发工具</li>
+                    <li class="nav-item active" onclick="switchView('http', this)"><span>🌐</span> HTTP 实验室</li>
+                    <li class="nav-item" onclick="switchView('ai', this)"><span>🧠</span> AI 灵感空间</li>
+                    <li class="nav-item" onclick="switchView('security', this)"><span>🔐</span> 凭证管理器</li>
+                </ul>
+            </nav>
+            <div style="margin-top: auto;" onclick="toggleTheme()">
+                <div class="zen-card" style="padding: 20px; border-radius: 20px; cursor: pointer;">
+                    <div class="eyebrow" style="margin:0">Theme</div>
+                    <div style="font-weight: 700; font-size: 13px; margin-top: 4px;">🌓 视觉切换</div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-panel">
+            <!-- 1. HTTP 实验室 (全功能版) -->
+            <section class="view active" id="view-http">
+                <div class="eyebrow">Advanced Networking</div>
+                <h2 style="font-size: 32px; margin: 0;">HTTP 实验室</h2>
+                
+                <div class="http-layout">
+                    <div class="sub-sidebar">
+                        <div>
+                            <div class="eyebrow" style="font-size: 9px;">Collections</div>
+                            <div class="list-item">📁 用户认证模块</div>
+                            <div class="list-item active">📁 支付网关 API</div>
+                            <div class="list-item">📁 资源上传接口</div>
+                        </div>
+                        <div style="margin-top: auto;">
+                            <div class="eyebrow" style="font-size: 9px;">History</div>
+                            <div class="list-item">GET /v1/user/profile</div>
+                            <div class="list-item">POST /v1/orders</div>
+                        </div>
+                    </div>
+                    
+                    <div class="http-main">
+                        <div class="req-config">
+                            <div class="method-row">
+                                <div class="method-select">POST ▾</div>
+                                <input class="url-input" value="https://api.gateway.pro/v2/payment/verify" spellcheck="false">
+                                <button class="primary-btn">SEND</button>
+                            </div>
+                            
+                            <div class="tabs">
+                                <div class="tab active">Headers (3)</div>
+                                <div class="tab">Auth</div>
+                                <div class="tab">Body</div>
+                                <div class="tab">Settings</div>
+                            </div>
+                            
+                            <div class="kv-editor">
+                                <div class="kv-row">
+                                    <input value="Content-Type">
+                                    <input value="application/json">
+                                </div>
+                                <div class="kv-row">
+                                    <input value="Authorization">
+                                    <input value="Bearer {{global_token}}">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="flex: 1; background: var(--card-bg); border-radius: 28px; border: 1px solid var(--line); padding: 24px; overflow: hidden; display: flex; flex-direction: column;">
+                            <div class="eyebrow">Response</div>
+<pre style="margin: 20px 0 0; font-family: var(--font-mono); font-size: 13px; color: var(--success);">
+{
+  "status": "success",
+  "tx_id": "8821-992-001",
+  "result": {
+    "verified": true,
+    "amount": 299.00
+  }
+}</pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. AI 助手 (全功能版) -->
+            <section class="view" id="view-ai">
+                <div class="eyebrow">Neural Interface</div>
+                <h2 style="font-size: 32px; margin: 0 0 24px;">AI 灵感空间</h2>
+                
+                <div class="ai-toolbar">
+                    <div class="ai-model-selector">
+                        <div style="width: 32px; height: 32px; background: #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white;">G</div>
+                        GPT-4o Omnis ▾
+                    </div>
+                    <div class="reasoning-control">
+                        <div class="eyebrow" style="margin:0">Thinking Depth</div>
+                        <input type="range" class="slider" min="1" max="10" value="7">
+                        <span style="font-size: 12px; font-weight: 800; color: var(--accent);">Level 7</span>
+                    </div>
+                </div>
+                
+                <div class="chat-area">
+                    <div class="bubble bubble-ai">
+                        你好！我已切换到深度思考模式。正在为你优化复杂的网络层架构...
+                    </div>
+                    <div class="bubble bubble-user">
+                        帮我写一个基于 Axios 的拦截器，处理全局 401 错误并静默刷新 Token。
+                    </div>
+                </div>
+                
+                <div class="floating-input">
+                    <input type="text" placeholder="描述你的开发难题...">
+                    <button class="primary-btn" style="width: 48px; border-radius: 50%; padding:0; height: 48px; font-size: 20px;">↑</button>
+                </div>
+            </section>
+
+            <!-- 其他视图占位 -->
+            <section class="view" id="view-tools">
+                <h2 style="font-size: 32px;">开发工具箱</h2>
+            </section>
+            <section class="view" id="view-security">
+                <h2 style="font-size: 32px;">凭证安全</h2>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        function switchView(id, el) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('view-' + id).classList.add('active');
+            el.classList.add('active');
+        }
+
+        let isDark = false;
+        function toggleTheme() {
+            isDark = !isDark;
+            document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        }
+    </script>
+</body>
+</html>

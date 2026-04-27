@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -83,10 +83,31 @@ const tabOptions = computed(() =>
 )
 const isCommandEdit = computed(() => Boolean(commandForm.id))
 const moveTargetByCommandId = ref<Record<string, string>>({})
+const activeCommandId = ref('')
+const activeCommand = computed(
+  () =>
+    commandsStore.visibleCommands.find((command) => command.id === activeCommandId.value) ??
+    commandsStore.visibleCommands[0] ??
+    null
+)
+
+watch(
+  () => commandsStore.visibleCommands.map((command) => command.id).join('|'),
+  () => {
+    if (!commandsStore.visibleCommands.some((command) => command.id === activeCommandId.value)) {
+      activeCommandId.value = commandsStore.visibleCommands[0]?.id ?? ''
+    }
+  },
+  { immediate: true }
+)
 
 function formatUpdatedAt(value: string): string {
   if (!value) return '等待首次保存'
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
+
+function getTabName(tabId: string): string {
+  return tabOptions.value.find((tab) => tab.id === tabId)?.name ?? '未分类'
 }
 
 // 统一处理命令数组到展示文本的转换，供卡片展示和复制复用。
@@ -148,7 +169,7 @@ async function explainCommandsWithAi(): Promise<void> {
       title: '命令资料 AI 说明',
       prompt
     })
-    message.success('命令资料已发送到 AI Bridge，请到 AI 页面查看会话结果。')
+    message.success('命令资料已发送到 AI Chat，请到 AI 页面查看会话结果。')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -303,46 +324,6 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="page-heading">
-    <p class="eyebrow">commands repository</p>
-    <h2>命令管理</h2>
-    <p>
-      这一版先把 P2 的第一块闭环打通：Electron Main 统一落盘到 appData，下层使用 JSON repository，
-      上层提供命令分组、命令卡片、快速复制和桌面端编辑体验。
-    </p>
-  </section>
-
-  <section class="commands-summary-grid">
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>分组数量</strong>
-        <span>{{ stats.tabs }}</span>
-      </div>
-      <p>当前以分组作为第一层组织结构，后续可以继续承接旧项目页签语义。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>命令总数</strong>
-        <span>{{ stats.total }}</span>
-      </div>
-      <p>命令内容在主进程统一持久化，Renderer 不直接接触文件系统。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>当前视图</strong>
-        <span>{{ stats.visible }}</span>
-      </div>
-      <p>当前分组：{{ tabSummary }}。支持按标题、描述、标签和命令内容本地搜索。</p>
-    </article>
-    <article class="progress-card">
-      <div class="progress-head">
-        <strong>迁移补齐</strong>
-        <span>旧体验</span>
-      </div>
-      <p>已补回批量文本导入、分组顺序调整、命令顺序调整和跨分组移动入口。</p>
-    </article>
-  </section>
-
   <div class="commands-shell">
     <NCard class="soft-card commands-sidebar" :bordered="false">
       <template #header>
@@ -401,6 +382,11 @@ onMounted(() => {
     <div class="commands-main">
       <NCard class="soft-card commands-toolbar" :bordered="false">
         <div class="commands-toolbar-row">
+          <div class="commands-toolbar-copy">
+            <p class="eyebrow">command library</p>
+            <strong>{{ tabSummary }}</strong>
+            <span>{{ stats.visible }} / {{ stats.total }} 条命令 · {{ stats.tabs }} 个分组</span>
+          </div>
           <NInput
             :value="commandsStore.search"
             clearable
@@ -431,42 +417,61 @@ onMounted(() => {
         </div>
       </NCard>
 
-      <div v-if="commandsStore.visibleCommands.length > 0" class="commands-grid">
-        <!-- 卡片列表是 store 基于当前搜索词和分组筛选计算出的前端派生结果。 -->
-        <NCard
-          v-for="command in commandsStore.visibleCommands"
-          :key="command.id"
-          class="soft-card command-card"
-          :bordered="false"
-        >
-          <template #header>
-            <div class="card-title-row">
-              <div>
+      <div v-if="commandsStore.visibleCommands.length > 0" class="commands-lab">
+        <section class="commands-list-panel">
+          <button
+            v-for="command in commandsStore.visibleCommands"
+            :key="command.id"
+            class="command-row-card"
+            :class="{ active: activeCommand?.id === command.id }"
+            type="button"
+            @click="activeCommandId = command.id"
+          >
+            <div class="command-row-main">
+              <div class="command-row-top">
+                <span class="command-row-pill">{{ getTabName(command.tabId) }}</span>
                 <strong>{{ command.title }}</strong>
-                <p class="muted">{{ command.description || '无描述，适合补一句用途说明。' }}</p>
               </div>
-              <NTag size="small" :bordered="false">{{
-                tabOptions.find((tab) => tab.id === command.tabId)?.name
-              }}</NTag>
+              <p class="muted">{{ command.description || '无描述，适合补一句用途说明。' }}</p>
             </div>
-          </template>
+            <div class="command-row-side">
+              <span>{{ command.lines.length }} 行</span>
+              <span>{{ command.tags.length }} 标签</span>
+            </div>
+          </button>
+        </section>
 
-          <div v-if="command.tags.length > 0" class="chip-list">
-            <span v-for="tag in command.tags" :key="tag" class="chip">{{ tag }}</span>
+        <section v-if="activeCommand" class="command-console-panel">
+          <div class="command-console-head">
+            <div>
+              <p class="eyebrow">terminal preview</p>
+              <strong>{{ activeCommand.title }}</strong>
+              <p class="muted">{{ activeCommand.description || '无描述，适合补一句用途说明。' }}</p>
+            </div>
+            <div class="command-console-meta">
+              <span>{{ getTabName(activeCommand.tabId) }}</span>
+              <span>{{ formatUpdatedAt(activeCommand.updatedAt) }}</span>
+            </div>
           </div>
 
-          <pre class="command-preview">{{ renderCommandLines(command) }}</pre>
+          <div v-if="activeCommand.tags.length > 0" class="chip-list">
+            <span v-for="tag in activeCommand.tags" :key="tag" class="chip">{{ tag }}</span>
+          </div>
+
+          <pre class="command-preview command-preview--console">{{
+            renderCommandLines(activeCommand)
+          }}</pre>
 
           <div class="action-row">
-            <NButton size="small" secondary @click="copyCommand(command)">复制</NButton>
+            <NButton size="small" secondary @click="copyCommand(activeCommand)">复制</NButton>
             <NButton
               size="small"
               quaternary
               :disabled="
-                commandsStore.commands.filter((item) => item.tabId === command.tabId)[0]?.id ===
-                command.id
+                commandsStore.commands.filter((item) => item.tabId === activeCommand.tabId)[0]
+                  ?.id === activeCommand.id
               "
-              @click="rotateCommandOrder('up', command)"
+              @click="rotateCommandOrder('up', activeCommand)"
             >
               上移
             </NButton>
@@ -474,16 +479,19 @@ onMounted(() => {
               size="small"
               quaternary
               :disabled="
-                commandsStore.commands.filter((item) => item.tabId === command.tabId)[
-                  commandsStore.commands.filter((item) => item.tabId === command.tabId).length - 1
-                ]?.id === command.id
+                commandsStore.commands.filter((item) => item.tabId === activeCommand.tabId)[
+                  commandsStore.commands.filter((item) => item.tabId === activeCommand.tabId)
+                    .length - 1
+                ]?.id === activeCommand.id
               "
-              @click="rotateCommandOrder('down', command)"
+              @click="rotateCommandOrder('down', activeCommand)"
             >
               下移
             </NButton>
-            <NButton size="small" secondary @click="openEditCommandModal(command)">编辑</NButton>
-            <NPopconfirm @positive-click="deleteCommand(command.id)">
+            <NButton size="small" secondary @click="openEditCommandModal(activeCommand)">
+              编辑
+            </NButton>
+            <NPopconfirm @positive-click="deleteCommand(activeCommand.id)">
               <template #trigger>
                 <NButton size="small" tertiary type="error">删除</NButton>
               </template>
@@ -493,18 +501,18 @@ onMounted(() => {
 
           <div class="command-move-row">
             <NSelect
-              :value="moveTargetByCommandId[command.id] || command.tabId"
+              :value="moveTargetByCommandId[activeCommand.id] || activeCommand.tabId"
               size="small"
               :options="tabOptions.map((tab) => ({ label: tab.name, value: tab.id }))"
               @update:value="
                 (value) => {
-                  moveTargetByCommandId[command.id] = String(value)
+                  moveTargetByCommandId[activeCommand.id] = String(value)
                 }
               "
             />
-            <NButton size="small" secondary @click="moveCommand(command)">移动到分组</NButton>
+            <NButton size="small" secondary @click="moveCommand(activeCommand)">移动到分组</NButton>
           </div>
-        </NCard>
+        </section>
       </div>
 
       <NCard v-else class="soft-card command-empty-card" :bordered="false">

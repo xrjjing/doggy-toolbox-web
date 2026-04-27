@@ -37,7 +37,7 @@ const featureGroups: FeatureGroup[] = [
     label: '工具面板',
     items: [
       { id: 'tools', label: '工具工作台 AI 复核' },
-      { id: 'ai-chat', label: 'AI Bridge 主对话台' }
+      { id: 'ai-chat', label: 'AI Chat 主工作台' }
     ]
   },
   {
@@ -145,7 +145,7 @@ async function sendSmokePrompt(provider: 'codex' | 'claude-code'): Promise<void>
       prompt:
         '请用两句话确认当前 AI 设置页已经接入本机 SDK，并说明当前默认工作目录与模块开关会参与会话。'
     })
-    message.success('测试会话已发送，请到右侧历史查看流式结果。')
+    message.success('测试会话已发送，请到 AI Chat 页面查看流式结果。')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -174,11 +174,6 @@ onMounted(async () => {
         </div>
       </template>
 
-      <p class="muted">
-        新仓默认不把 Codex / Claude SDK 打进基础安装包。GitHub
-        用户下载桌面端后，只有在这里点击安装， 才会把对应 provider 的 runtime 放到本机用户数据目录。
-      </p>
-
       <section class="ai-settings-section">
         <div class="card-title-row">
           <span>AI SDK Runtime</span>
@@ -199,8 +194,6 @@ onMounted(async () => {
               <span>{{ runtime.installedVersion || '未安装' }}</span>
               <strong>占用空间</strong>
               <span>{{ formatBytes(runtime.sizeBytes) }}</span>
-              <strong>安装目录</strong>
-              <span>{{ runtime.installPath }}</span>
               <strong>安装方式</strong>
               <span>{{ runtime.packageManager || '未检测' }}</span>
             </div>
@@ -325,10 +318,6 @@ onMounted(async () => {
               {{ codexHealth.headline }}
             </NTag>
           </div>
-          <div class="runtime-status-copy">
-            <strong>{{ codexHealth.summary }}</strong>
-            <span class="muted">{{ codexStatus?.probe.message || '等待检测' }}</span>
-          </div>
           <div class="commands-meta">
             <strong>本机配置</strong>
             <span>{{ codexStatus?.configDetected ? '已检测' : '未检测' }}</span>
@@ -336,11 +325,6 @@ onMounted(async () => {
             <span>{{ codexStatus?.runtimeInstalled ? '已安装' : '未安装' }}</span>
             <strong>最终可用</strong>
             <span>{{ codexStatus?.available ? '是' : '否' }}</span>
-          </div>
-          <div class="chip-list">
-            <span v-for="chip in codexHealth.chips" :key="`codex-chip-${chip}`" class="chip">
-              {{ chip }}
-            </span>
           </div>
           <div class="chip-list">
             <span v-for="fact in codexFacts" :key="`codex-${fact.label}`" class="chip">
@@ -356,10 +340,6 @@ onMounted(async () => {
               {{ claudeHealth.headline }}
             </NTag>
           </div>
-          <div class="runtime-status-copy">
-            <strong>{{ claudeHealth.summary }}</strong>
-            <span class="muted">{{ claudeStatus?.probe.message || '等待检测' }}</span>
-          </div>
           <div class="commands-meta">
             <strong>本机配置</strong>
             <span>{{ claudeStatus?.configDetected ? '已检测' : '未检测' }}</span>
@@ -367,11 +347,6 @@ onMounted(async () => {
             <span>{{ claudeStatus?.runtimeInstalled ? '已安装' : '未安装' }}</span>
             <strong>最终可用</strong>
             <span>{{ claudeStatus?.available ? '是' : '否' }}</span>
-          </div>
-          <div class="chip-list">
-            <span v-for="chip in claudeHealth.chips" :key="`claude-chip-${chip}`" class="chip">
-              {{ chip }}
-            </span>
           </div>
           <div class="chip-list">
             <span v-for="fact in claudeFacts" :key="`claude-${fact.label}`" class="chip">

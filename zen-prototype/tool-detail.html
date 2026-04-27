@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><title>RSA Tool - Zen-iOS</title><link rel="stylesheet" href="core.css">
+    <style>
+        .tool-layout { display: flex; flex-direction: column; gap: 24px; height: 100%; }
+        .control-strip { display: flex; gap: 12px; background: var(--card-bg); padding: 16px; border-radius: 20px; border: 1px solid var(--line); }
+        .editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1; }
+        .editor-pane { background: var(--card-bg); border-radius: 28px; border: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow-soft); }
+        .pane-head { padding: 16px 24px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+        .pane-body { flex: 1; padding: 24px; font-family: var(--font-mono); font-size: 13px; color: var(--text-main); outline: none; white-space: pre-wrap; overflow-y: auto; }
+        .action-bar { margin-top: auto; padding: 24px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 12px; }
+    </style>
+</head>
+<body>
+    <div class="blob"></div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="eyebrow">Tool Insight</div><h1>Doggy Box</h1></div>
+            <nav style="margin-top: 40px;">
+                <ul class="nav-list">
+                    <li><a href="workbench.html" class="nav-link active"><span>🛠️</span> 返回工具箱</a></li>
+                </ul>
+            </nav>
+        </aside>
+        <main class="viewport">
+            <header class="view-header">
+                <div style="display:flex; align-items:center; gap:16px;">
+                    <div style="font-size:24px;">🔐</div>
+                    <h2 style="font-size:28px; font-weight:800; margin:0; letter-spacing:-0.03em;">RSA 密钥对生成</h2>
+                </div>
+            </header>
+            <div class="view-content fade-in">
+                <div class="tool-layout">
+                    <div class="control-strip">
+                        <select style="background:var(--bg-base); border:none; padding:8px 16px; border-radius:10px; font-weight:700;">
+                            <option>Key Size: 2048 bit</option>
+                            <option>Key Size: 4096 bit</option>
+                        </select>
+                        <button class="primary-btn" style="margin:0; padding:8px 24px; font-size:12px;">重新生成</button>
+                    </div>
+                    <div class="editor-grid">
+                        <div class="editor-pane">
+                            <div class="pane-head"><div class="eyebrow">Public Key</div><button style="font-size:11px; font-weight:700; color:var(--accent); border:none; background:none; cursor:pointer;">复制</button></div>
+                            <div class="pane-body" contenteditable="true">-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7X...
+-----END PUBLIC KEY-----</div>
+                        </div>
+                        <div class="editor-pane">
+                            <div class="pane-head"><div class="eyebrow">Private Key</div><button style="font-size:11px; font-weight:700; color:var(--accent); border:none; background:none; cursor:pointer;">复制</button></div>
+                            <div class="pane-body" contenteditable="true" style="color:var(--danger);">-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAo...
+-----END PRIVATE KEY-----</div>
+                        </div>
+                    </div>
+                    <div class="zen-card" style="padding:20px; background:rgba(52, 199, 89, 0.05); border-color:var(--success);">
+                        <div style="font-size:13px; color:var(--success); font-weight:700;">✨ 状态：所有密钥对均已在本地物理隔离生成，未经过任何网络传输。</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

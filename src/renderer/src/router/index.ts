@@ -5,8 +5,7 @@ const AiChatView = () => import('@renderer/views/AiChatView.vue')
 const CommandsView = () => import('@renderer/views/CommandsView.vue')
 const CredentialsView = () => import('@renderer/views/CredentialsView.vue')
 const PromptsView = () => import('@renderer/views/PromptsView.vue')
-const BackupView = () => import('@renderer/views/BackupView.vue')
-const LegacyImportPage = () => import('@renderer/views/LegacyImportView.vue')
+const DataCenterView = () => import('@renderer/views/DataCenterView.vue')
 const HttpCollectionsView = () => import('@renderer/views/HttpCollectionsView.vue')
 
 export const router = createRouter({
@@ -42,14 +41,17 @@ export const router = createRouter({
       component: HttpCollectionsView
     },
     {
+      path: '/data-center',
+      name: 'data-center',
+      component: DataCenterView
+    },
+    {
       path: '/backup',
-      name: 'backup',
-      component: BackupView
+      redirect: '/data-center'
     },
     {
       path: '/legacy-import',
-      name: 'legacy-import',
-      component: LegacyImportPage
+      redirect: '/data-center'
     },
     {
       path: '/ai',
