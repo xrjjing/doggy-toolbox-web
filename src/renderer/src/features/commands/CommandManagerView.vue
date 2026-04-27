@@ -15,9 +15,9 @@ import {
   NText,
   useMessage
 } from 'naive-ui'
-import type { CommandRecord } from '@shared/ipc-contract'
+import type { AiProviderKind, AiSessionPhase, CommandRecord } from '@shared/ipc-contract'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
-import { useAiStore } from '@renderer/stores/ai'
+import { useOneShotAiReview } from '@renderer/composables/useOneShotAiReview'
 import { useCommandsStore } from '@renderer/stores/commands'
 
 /**
@@ -43,8 +43,8 @@ type CommandFormState = {
 }
 
 const message = useMessage()
-const aiStore = useAiStore()
 const aiSettingsStore = useAiSettingsStore()
+const aiReview = useOneShotAiReview()
 const commandsStore = useCommandsStore()
 const tabModalVisible = ref(false)
 const commandModalVisible = ref(false)
@@ -84,12 +84,24 @@ const tabOptions = computed(() =>
 const isCommandEdit = computed(() => Boolean(commandForm.id))
 const moveTargetByCommandId = ref<Record<string, string>>({})
 const activeCommandId = ref('')
+const aiProvider = ref<AiProviderKind>('codex')
 const activeCommand = computed(
   () =>
     commandsStore.visibleCommands.find((command) => command.id === activeCommandId.value) ??
     commandsStore.visibleCommands[0] ??
     null
 )
+const aiPhaseLabel = computed(() => {
+  const labels: Record<AiSessionPhase, string> = {
+    idle: '空闲',
+    starting: '启动中',
+    streaming: '输出中',
+    completed: '已完成',
+    failed: '失败',
+    cancelled: '已取消'
+  }
+  return labels[aiReview.phase.value]
+})
 
 watch(
   () => commandsStore.visibleCommands.map((command) => command.id).join('|'),
@@ -164,12 +176,12 @@ async function explainCommandsWithAi(): Promise<void> {
   ].join('\n')
 
   try {
-    await aiStore.startChat({
+    await aiReview.startReview({
+      provider: aiProvider.value,
       moduleId: 'commands',
       title: '命令资料 AI 说明',
       prompt
     })
-    message.success('命令资料已发送到 AI Chat，请到 AI 页面查看会话结果。')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -401,6 +413,7 @@ onMounted(() => {
             <NButton secondary @click="importModalVisible = true">批量导入</NButton>
             <NButton
               secondary
+              :loading="aiReview.running.value"
               :disabled="!aiSettingsStore.isFeatureEnabled('commands')"
               @click="explainCommandsWithAi"
             >
@@ -416,6 +429,24 @@ onMounted(() => {
           </NSpace>
         </div>
       </NCard>
+
+      <section v-if="aiReview.hasResult.value" class="inline-ai-review-card">
+        <div class="inline-ai-review-head">
+          <div>
+            <strong>AI 说明结果</strong>
+            <p>本次结果只保留在命令管理页，不写入 AI Chat 会话。</p>
+          </div>
+          <span class="http-status-pill">{{ aiPhaseLabel }}</span>
+        </div>
+        <div class="ai-inline-runtime-grid">
+          <span>提供方 {{ aiReview.provider.value }}</span>
+          <span>模型 {{ aiReview.runtime.value?.model || '本机默认' }}</span>
+          <span>输出 {{ aiReview.usage.value?.outputTokens ?? 0 }}</span>
+        </div>
+        <pre class="stream-output tool-ai-output">{{
+          aiReview.output.value || aiReview.errorMessage.value || '等待 AI 说明结果...'
+        }}</pre>
+      </section>
 
       <div v-if="commandsStore.visibleCommands.length > 0" class="commands-lab">
         <section class="commands-list-panel">

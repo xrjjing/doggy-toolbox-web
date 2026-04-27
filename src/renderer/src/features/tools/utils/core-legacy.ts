@@ -535,35 +535,72 @@ export function jsonToCsv(input: string, delimiter = ','): string {
 
 export function markdownToHtml(markdown: string): string {
   /**
-   * Markdown 预览只支持标题、列表、段落、粗体和行内代码等基础语法。
+   * Markdown 预览只支持常见只读语法，输出前统一 escape，避免把模型文本当成真实 HTML 执行。
    */
   const lines = String(markdown ?? '').split(/\r?\n/)
-  let inList = false
+  let listType: 'ul' | 'ol' | null = null
+  let inCode = false
+  let codeBuffer: string[] = []
   const html: string[] = []
+
+  const closeList = () => {
+    if (!listType) return
+    html.push(`</${listType}>`)
+    listType = null
+  }
+
+  const flushCode = () => {
+    html.push(`<pre><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`)
+    codeBuffer = []
+  }
+
   for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      closeList()
+      if (inCode) {
+        flushCode()
+        inCode = false
+      } else {
+        inCode = true
+        codeBuffer = []
+      }
+      continue
+    }
+
+    if (inCode) {
+      codeBuffer.push(line)
+      continue
+    }
+
     const heading = line.match(/^(#{1,6})\s+(.*)$/)
-    const list = line.match(/^\s*[-*]\s+(.*)$/)
+    const bulletList = line.match(/^\s*[-*]\s+(.*)$/)
+    const orderedList = line.match(/^\s*\d+\.\s+(.*)$/)
     if (heading) {
-      if (inList) {
-        html.push('</ul>')
-        inList = false
-      }
+      closeList()
       html.push(`<h${heading[1].length}>${escapeHtml(heading[2])}</h${heading[1].length}>`)
-    } else if (list) {
-      if (!inList) {
+    } else if (bulletList) {
+      if (listType !== 'ul') {
+        closeList()
         html.push('<ul>')
-        inList = true
+        listType = 'ul'
       }
-      html.push(`<li>${escapeHtml(list[1])}</li>`)
+      html.push(`<li>${escapeHtml(bulletList[1])}</li>`)
+    } else if (orderedList) {
+      if (listType !== 'ol') {
+        closeList()
+        html.push('<ol>')
+        listType = 'ol'
+      }
+      html.push(`<li>${escapeHtml(orderedList[1])}</li>`)
     } else if (line.trim()) {
-      if (inList) {
-        html.push('</ul>')
-        inList = false
-      }
+      closeList()
       html.push(`<p>${escapeHtml(line)}</p>`)
+    } else {
+      closeList()
     }
   }
-  if (inList) html.push('</ul>')
+  closeList()
+  if (inCode) flushCode()
   return html
     .join('\n')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')

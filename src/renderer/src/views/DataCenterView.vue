@@ -240,7 +240,7 @@ async function importBackup(): Promise<void> {
               :value="legacyImportStore.sourceJson"
               type="textarea"
               placeholder="粘贴旧项目总备份 JSON，或旧项目 Prompt 模板导出 JSON"
-              :autosize="{ minRows: 14, maxRows: 22 }"
+              :autosize="{ minRows: 8, maxRows: 16 }"
               @update:value="legacyImportStore.setSourceJson"
             />
             <div class="action-row">
@@ -370,7 +370,7 @@ async function importBackup(): Promise<void> {
                   :value="exportJson"
                   type="textarea"
                   readonly
-                  :autosize="{ minRows: 14, maxRows: 22 }"
+                  :autosize="{ minRows: 8, maxRows: 16 }"
                 />
                 <div v-else class="data-center-empty-state">
                   <NEmpty description="还没有生成备份" />
@@ -422,7 +422,7 @@ async function importBackup(): Promise<void> {
                   :value="backupStore.importText"
                   type="textarea"
                   placeholder="粘贴 doggy-toolbox-web 备份 JSON"
-                  :autosize="{ minRows: 14, maxRows: 22 }"
+                  :autosize="{ minRows: 8, maxRows: 16 }"
                   @update:value="backupStore.setImportText"
                 />
               </div>

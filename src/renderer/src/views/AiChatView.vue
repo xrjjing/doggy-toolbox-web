@@ -25,13 +25,14 @@ import {
 import AiSettingsView from '@renderer/features/ai/AiSettingsView.vue'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
 import { useAiStore } from '@renderer/stores/ai'
+import { markdownToHtml } from '@renderer/features/tools/utils/core-legacy'
 
 const message = useMessage()
 const aiStore = useAiStore()
 const aiSettingsStore = useAiSettingsStore()
 const showSettingsModal = ref(false)
-const showThinking = ref(false)
 const reasoningDepth = ref(70)
+const expandedThinkingIds = ref<Set<string>>(new Set())
 
 const providerLabel = computed(() =>
   aiStore.provider === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
@@ -62,14 +63,18 @@ const visibleMessages = computed(() => {
     .map((item, index) => ({
       id: `session-${index}-${item.role}`,
       role: item.role,
-      content: item.content
+      content: item.content,
+      html: markdownToHtml(item.content),
+      thinking: ''
     }))
 
   if (draft && !aiStore.activeSession) {
     bubbles.push({
       id: 'draft-user',
       role: 'user',
-      content: draft
+      content: draft,
+      html: markdownToHtml(draft),
+      thinking: ''
     })
   }
 
@@ -77,7 +82,9 @@ const visibleMessages = computed(() => {
     bubbles.push({
       id: 'assistant-output',
       role: 'assistant',
-      content: aiStore.output
+      content: aiStore.output,
+      html: markdownToHtml(aiStore.output),
+      thinking: aiStore.thinking
     })
   }
 
@@ -92,7 +99,7 @@ function formatUpdatedAt(value?: string): string {
 async function startChat(): Promise<void> {
   try {
     await aiStore.startChat({ moduleId: 'ai-chat' })
-    showThinking.value = true
+    expandedThinkingIds.value = new Set(['assistant-output'])
   } catch (error) {
     aiStore.running = false
     message.error(error instanceof Error ? error.message : String(error))
@@ -103,8 +110,18 @@ async function cancelChat(): Promise<void> {
   await aiStore.cancelChat()
 }
 
-function toggleThinking(): void {
-  showThinking.value = !showThinking.value
+function toggleThinking(messageId: string): void {
+  const next = new Set(expandedThinkingIds.value)
+  if (next.has(messageId)) {
+    next.delete(messageId)
+  } else {
+    next.add(messageId)
+  }
+  expandedThinkingIds.value = next
+}
+
+function isThinkingOpen(messageId: string): boolean {
+  return expandedThinkingIds.value.has(messageId)
 }
 
 function openSettingsModal(): void {
@@ -191,10 +208,26 @@ onBeforeUnmount(() => {
           <article
             v-for="item in visibleMessages"
             :key="item.id"
-            class="bubble"
+            class="bubble-shell"
             :class="item.role === 'assistant' ? 'bubble-ai' : 'bubble-user'"
           >
-            {{ item.content }}
+            <div class="bubble markdown-body" v-html="item.html" />
+            <button
+              v-if="item.role === 'assistant' && item.thinking"
+              class="message-thinking-toggle"
+              type="button"
+              @click="toggleThinking(item.id)"
+            >
+              <NIcon :component="isThinkingOpen(item.id) ? ChevronUpOutline : ChevronDownOutline" />
+              <span>{{ isThinkingOpen(item.id) ? '收起思考过程' : '展开思考过程' }}</span>
+              <small>{{ thinkingPreview }}</small>
+            </button>
+            <NCollapseTransition :show="isThinkingOpen(item.id)">
+              <pre
+                v-if="item.role === 'assistant' && item.thinking"
+                class="stream-output is-thinking ai-thinking-output ai-thinking-output--message"
+              >{{ item.thinking }}</pre>
+            </NCollapseTransition>
           </article>
         </div>
         <div v-else class="chat-area chat-area--empty">
@@ -235,24 +268,6 @@ onBeforeUnmount(() => {
       </section>
 
       <div class="ai-chat-side">
-        <NCard class="soft-card ai-thinking-card" :bordered="false">
-          <template #header>
-            <button class="ai-collapse-head" type="button" @click="toggleThinking">
-              <div>
-                <strong>思考过程</strong>
-                <p>{{ thinkingPreview }}</p>
-              </div>
-              <NIcon :component="showThinking ? ChevronUpOutline : ChevronDownOutline" />
-            </button>
-          </template>
-
-          <NCollapseTransition :show="showThinking">
-            <pre class="stream-output is-thinking ai-thinking-output">{{
-              aiStore.thinking || '等待模型输出思考过程...'
-            }}</pre>
-          </NCollapseTransition>
-        </NCard>
-
         <NCard class="soft-card ai-runtime-snapshot-card" :bordered="false">
           <template #header>
             <div class="card-title-row">
@@ -296,7 +311,7 @@ onBeforeUnmount(() => {
     preset="card"
     title="AI 设置"
     class="ai-settings-modal"
-    :style="{ width: 'min(920px, calc(100vw - 64px))' }"
+    :style="{ width: 'min(760px, calc(100vw - 120px))' }"
   >
     <AiSettingsView />
   </NModal>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, watch, ref } from 'vue'
+import { computed, defineAsyncComponent, watch, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NButton,
@@ -22,7 +22,7 @@ import {
   TimeOutline
 } from '@vicons/ionicons5'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
-import { useAiStore } from '@renderer/stores/ai'
+import { useOneShotAiReview } from '@renderer/composables/useOneShotAiReview'
 import { toolCatalog, toolCategories } from './catalog'
 import { buildToolAiAssistPrompt } from './tool-ai-assist'
 import type { ToolCategoryKey, ToolKind, ToolPanelSnapshot } from './types'
@@ -102,7 +102,7 @@ const NginxConfigGeneratorToolPanel = defineAsyncComponent(
 const message = useMessage()
 const route = useRoute()
 const aiSettingsStore = useAiSettingsStore()
-const aiStore = useAiStore()
+const aiReview = useOneShotAiReview()
 const activeTool = ref<ToolKind>('base64')
 const activeCategory = ref<ToolCategoryKey>('encoding-format')
 const input = ref('')
@@ -168,7 +168,7 @@ const aiPhaseLabel = computed(() => {
     failed: '失败',
     cancelled: '已取消'
   }
-  return labels[aiStore.phase]
+  return labels[aiReview.phase.value]
 })
 
 function updatePanelSnapshot(snapshot: ToolPanelSnapshot): void {
@@ -490,7 +490,7 @@ async function startAiAssist(): Promise<void> {
   })
 
   try {
-    await aiStore.startChat({
+    await aiReview.startReview({
       moduleId: 'tools',
       provider: aiProvider.value,
       title: `${activeDefinition.value.title} 工具 AI 分析`,
@@ -502,12 +502,8 @@ async function startAiAssist(): Promise<void> {
 }
 
 async function cancelAiAssist(): Promise<void> {
-  await aiStore.cancelChat()
+  await aiReview.cancelReview()
 }
-
-onBeforeUnmount(() => {
-  aiStore.disposeStream()
-})
 
 watch(() => route.query.tool, syncToolFromRoute, { immediate: true })
 watch(activeCategory, (category) => {
@@ -571,18 +567,6 @@ watch(activeCategory, (category) => {
         </template>
 
         <NSpace vertical size="large">
-          <section class="tool-current-overview">
-            <div class="tool-current-copy">
-              <p class="eyebrow">available modules</p>
-              <strong>{{ activeDefinition.title }}</strong>
-              <p>{{ activeDefinition.description }}</p>
-            </div>
-            <div class="tool-current-meta">
-              <NTag size="small" :bordered="false">{{ activeCategoryMeta.label }}</NTag>
-              <NTag size="small" :bordered="false">{{ activeDefinition.accent }}</NTag>
-            </div>
-          </section>
-
           <section class="tool-grid-rail">
             <button
               v-for="tool in activeCategoryTools"
@@ -592,10 +576,8 @@ watch(activeCategory, (category) => {
               type="button"
               @click="selectTool(tool.key)"
             >
-              <div class="tool-icon-box">{{ tool.title.slice(0, 1) }}</div>
               <div class="tool-grid-copy">
                 <strong>{{ tool.title }}</strong>
-                <p>{{ tool.description }}</p>
               </div>
             </button>
           </section>
@@ -681,7 +663,7 @@ watch(activeCategory, (category) => {
               <p class="eyebrow">local ai assist</p>
               <h3>AI 结果复核</h3>
             </div>
-            <NTag size="small" :bordered="false">AI Chat</NTag>
+            <NTag size="small" :bordered="false">页内复核</NTag>
           </div>
         </template>
 
@@ -699,27 +681,27 @@ watch(activeCategory, (category) => {
             <div class="action-row">
               <NButton
                 type="primary"
-                :loading="aiStore.running"
+                :loading="aiReview.running.value"
                 :disabled="!aiSettingsStore.isFeatureEnabled('tools')"
                 @click="startAiAssist"
               >
                 让 {{ aiProviderLabel }} 分析
               </NButton>
-              <NButton secondary :disabled="!aiStore.running" @click="cancelAiAssist">
+              <NButton secondary :disabled="!aiReview.running.value" @click="cancelAiAssist">
                 取消
               </NButton>
             </div>
           </div>
 
-          <div v-if="aiStore.activeSession" class="ai-runtime-grid tool-ai-runtime-grid">
-            <NStatistic label="提供方" :value="aiStore.activeSession.provider" />
+          <div v-if="aiReview.hasResult.value" class="ai-runtime-grid tool-ai-runtime-grid">
+            <NStatistic label="提供方" :value="aiReview.provider.value" />
             <NStatistic label="阶段" :value="aiPhaseLabel" />
-            <NStatistic label="模型" :value="aiStore.runtime?.model || '跟随本机配置'" />
-            <NStatistic label="输出 Tokens" :value="aiStore.usage?.outputTokens ?? 0" />
+            <NStatistic label="模型" :value="aiReview.runtime.value?.model || '跟随本机配置'" />
+            <NStatistic label="输出 Tokens" :value="aiReview.usage.value?.outputTokens ?? 0" />
           </div>
 
           <pre class="stream-output tool-ai-output">{{
-            aiStore.output || '等待 AI 分析。会话会同步保存到 AI Chat 页面。'
+            aiReview.output.value || aiReview.errorMessage.value || '等待 AI 分析。本次复核只在当前工具页显示，不会占用 AI Chat。'
           }}</pre>
         </section>
       </NCard>

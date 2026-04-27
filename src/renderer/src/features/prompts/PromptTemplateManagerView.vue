@@ -16,9 +16,14 @@ import {
   NText,
   useMessage
 } from 'naive-ui'
-import type { PromptTemplate, PromptVariable } from '@shared/ipc-contract'
+import type {
+  AiProviderKind,
+  AiSessionPhase,
+  PromptTemplate,
+  PromptVariable
+} from '@shared/ipc-contract'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
-import { useAiStore } from '@renderer/stores/ai'
+import { useOneShotAiReview } from '@renderer/composables/useOneShotAiReview'
 import { usePromptsStore } from '@renderer/stores/prompts'
 
 /**
@@ -49,8 +54,8 @@ type TemplateFormState = {
 }
 
 const message = useMessage()
-const aiStore = useAiStore()
 const aiSettingsStore = useAiSettingsStore()
+const aiReview = useOneShotAiReview()
 const promptsStore = usePromptsStore()
 const categoryModalVisible = ref(false)
 const templateModalVisible = ref(false)
@@ -99,12 +104,24 @@ const currentVariables = computed(() => currentTemplate.value?.variables ?? [])
 const isTemplateEdit = computed(() => Boolean(templateForm.id))
 const isCategoryEdit = computed(() => Boolean(categoryForm.id))
 const activeTemplateId = ref('')
+const aiProvider = ref<AiProviderKind>('codex')
 const activeTemplate = computed(
   () =>
     promptsStore.visibleTemplates.find((template) => template.id === activeTemplateId.value) ??
     promptsStore.visibleTemplates[0] ??
     null
 )
+const aiPhaseLabel = computed(() => {
+  const labels: Record<AiSessionPhase, string> = {
+    idle: '空闲',
+    starting: '启动中',
+    streaming: '输出中',
+    completed: '已完成',
+    failed: '失败',
+    cancelled: '已取消'
+  }
+  return labels[aiReview.phase.value]
+})
 
 watch(
   () => promptsStore.visibleTemplates.map((template) => template.id).join('|'),
@@ -395,12 +412,12 @@ async function reviewPromptsWithAi(): Promise<void> {
   ].join('\n')
 
   try {
-    await aiStore.startChat({
+    await aiReview.startReview({
+      provider: aiProvider.value,
       moduleId: 'prompts',
       title: 'Prompt 模板 AI 审查',
       prompt
     })
-    message.success('Prompt 模板已发送到 AI Chat，请到 AI 页面查看会话结果。')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -525,6 +542,7 @@ onMounted(() => {
               <NButton secondary @click="importModalVisible = true">导入 JSON</NButton>
               <NButton
                 secondary
+                :loading="aiReview.running.value"
                 :disabled="!aiSettingsStore.isFeatureEnabled('prompts')"
                 @click="reviewPromptsWithAi"
               >
@@ -535,6 +553,24 @@ onMounted(() => {
           </div>
         </div>
       </NCard>
+
+      <section v-if="aiReview.hasResult.value" class="inline-ai-review-card">
+        <div class="inline-ai-review-head">
+          <div>
+            <strong>AI 审查结果</strong>
+            <p>本次结果只保留在 Prompt 模板页，不写入 AI Chat 会话。</p>
+          </div>
+          <span class="http-status-pill">{{ aiPhaseLabel }}</span>
+        </div>
+        <div class="ai-inline-runtime-grid">
+          <span>提供方 {{ aiReview.provider.value }}</span>
+          <span>模型 {{ aiReview.runtime.value?.model || '本机默认' }}</span>
+          <span>输出 {{ aiReview.usage.value?.outputTokens ?? 0 }}</span>
+        </div>
+        <pre class="stream-output tool-ai-output">{{
+          aiReview.output.value || aiReview.errorMessage.value || '等待 AI 审查结果...'
+        }}</pre>
+      </section>
 
       <div v-if="promptsStore.visibleTemplates.length > 0" class="prompts-lab">
         <section class="prompts-list-panel">

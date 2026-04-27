@@ -16,6 +16,7 @@ import {
   useMessage
 } from 'naive-ui'
 import type {
+  AiSessionPhase,
   AiProviderKind,
   HttpAuth,
   HttpBody,
@@ -26,7 +27,7 @@ import type {
   HttpRequestRecord
 } from '@shared/ipc-contract'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
-import { useAiStore } from '@renderer/stores/ai'
+import { useOneShotAiReview } from '@renderer/composables/useOneShotAiReview'
 import { useHttpCollectionsStore } from '@renderer/stores/http-collections'
 import {
   exportRequestAsCodeSnippet,
@@ -76,8 +77,8 @@ type CollectionImportFormat = 'postman' | 'openapi' | 'apifox'
 type ExportFormat = 'curl' | 'httpie' | 'postman' | 'openapi' | 'apifox'
 
 const message = useMessage()
-const aiStore = useAiStore()
 const aiSettingsStore = useAiSettingsStore()
+const aiReview = useOneShotAiReview()
 const httpStore = useHttpCollectionsStore()
 const collectionModalVisible = ref(false)
 const requestModalVisible = ref(false)
@@ -163,6 +164,17 @@ const stats = computed(() => ({
   environments: httpStore.environments.length,
   history: httpStore.history.length
 }))
+const aiPhaseLabel = computed(() => {
+  const labels: Record<AiSessionPhase, string> = {
+    idle: '空闲',
+    starting: '启动中',
+    streaming: '流式输出',
+    completed: '已完成',
+    failed: '失败',
+    cancelled: '已取消'
+  }
+  return labels[aiReview.phase.value]
+})
 const activeRequestHeaders = computed(
   () => httpStore.activeRequest?.headers.filter((item) => item.enabled) ?? []
 )
@@ -616,13 +628,12 @@ async function explainHttpWithAi(): Promise<void> {
   ].join('\n')
 
   try {
-    await aiStore.startChat({
+    await aiReview.startReview({
       moduleId: 'http',
       provider: aiProvider.value,
       title: `${httpStore.activeRequest.name} HTTP AI 分析`,
       prompt
     })
-    message.success('HTTP 请求资料已发送到 AI Chat，请到 AI 页面查看会话结果。')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -917,8 +928,8 @@ onMounted(() => {
       <section class="http-status-console">
         <div class="http-response-head">
           <div>
-            <strong>Response Console</strong>
-            <p>执行结果、批量测试与历史在同一块物理控制台内展示。</p>
+            <p class="eyebrow">response</p>
+            <strong>响应结果</strong>
           </div>
           <span
             class="http-status-pill"
@@ -1082,6 +1093,24 @@ onMounted(() => {
             </div>
 
             <NEmpty v-else description="当前请求还没有执行历史" />
+          </section>
+
+          <section v-if="aiReview.hasResult.value" class="http-section-inset http-ai-review-panel">
+            <div class="http-response-head http-response-head--mini">
+              <div>
+                <strong>AI 分析结果</strong>
+                <p>本次分析只在当前 HTTP 页展示，不同步到 AI Chat。</p>
+              </div>
+              <span class="http-status-pill">{{ aiPhaseLabel }}</span>
+            </div>
+            <div class="ai-inline-runtime-grid">
+              <span>提供方 {{ aiReview.provider.value }}</span>
+              <span>模型 {{ aiReview.runtime.value?.model || '本机默认' }}</span>
+              <span>输出 {{ aiReview.usage.value?.outputTokens ?? 0 }}</span>
+            </div>
+            <pre class="stream-output tool-ai-output">{{
+              aiReview.output.value || aiReview.errorMessage.value || '等待 AI 分析结果...'
+            }}</pre>
           </section>
         </div>
       </section>
