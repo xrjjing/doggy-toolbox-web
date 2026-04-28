@@ -11,6 +11,8 @@ import {
   NPopconfirm,
   NSelect,
   NSpace,
+  NTabPane,
+  NTabs,
   NTag,
   NText,
   useMessage
@@ -95,6 +97,8 @@ const collectionImportFormat = ref<CollectionImportFormat>('postman')
 const exportText = ref('')
 const exportFormat = ref<ExportFormat>('curl')
 const aiProvider = ref<AiProviderKind>('codex')
+const httpRailTab = ref<'collections' | 'history'>('collections')
+const requestEditorTab = ref<'params' | 'headers' | 'body'>('params')
 const collectionForm = reactive<CollectionFormState>({
   id: '',
   name: '',
@@ -181,7 +185,9 @@ const activeRequestHeaders = computed(
 const activeRequestParams = computed(
   () => httpStore.activeRequest?.params.filter((item) => item.enabled) ?? []
 )
-const activeRequestTags = computed(() => httpStore.activeRequest?.tags ?? [])
+const editorTitle = computed(() => (requestForm.id ? '编辑请求' : '新增请求'))
+const editorCanExecute = computed(() => Boolean(requestForm.id && requestForm.url.trim()))
+const editorCanSave = computed(() => Boolean(requestForm.collectionId && requestForm.name.trim()))
 const isEditingCollection = computed(() => Boolean(collectionForm.id))
 const isEditingRequest = computed(() => Boolean(requestForm.id))
 const isEditingEnvironment = computed(() => Boolean(environmentForm.id))
@@ -198,11 +204,6 @@ const curlCodeLanguageOptions: Array<{ label: string; value: CurlCodeLanguage }>
   { label: 'PHP', value: 'php' },
   { label: 'Go', value: 'go' }
 ]
-
-function formatUpdatedAt(value: string): string {
-  if (!value) return '等待初始化'
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
-}
 
 function formatHistoryTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
@@ -287,7 +288,8 @@ function openCreateRequestModal(): void {
   requestForm.authUsername = ''
   requestForm.authPassword = ''
   requestForm.tagsText = ''
-  requestModalVisible.value = true
+  requestModalVisible.value = false
+  requestEditorTab.value = 'params'
 }
 
 function openEditRequestModal(request: HttpRequestRecord): void {
@@ -306,7 +308,18 @@ function openEditRequestModal(request: HttpRequestRecord): void {
   requestForm.authUsername = request.auth.username
   requestForm.authPassword = request.auth.password
   requestForm.tagsText = request.tags.join(', ')
-  requestModalVisible.value = true
+  requestModalVisible.value = false
+  requestEditorTab.value = 'params'
+}
+
+function syncEditorFromActiveRequest(): void {
+  if (httpStore.activeRequest) {
+    openEditRequestModal(httpStore.activeRequest)
+    return
+  }
+  if (!requestForm.id && !requestForm.url && !requestForm.name) {
+    openCreateRequestModal()
+  }
 }
 
 function openCreateEnvironmentModal(): void {
@@ -364,6 +377,37 @@ async function submitRequest(): Promise<void> {
     message.success(isEditingRequest.value ? '请求已更新' : '请求已创建')
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+function formatRequestBodyJson(): void {
+  if (!requestForm.bodyContent.trim()) {
+    message.warning('当前 Body 为空')
+    return
+  }
+  try {
+    requestForm.bodyContent = JSON.stringify(JSON.parse(requestForm.bodyContent), null, 2)
+    requestForm.bodyType = 'json'
+    message.success('请求 Body 已格式化')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'Body 不是合法 JSON')
+  }
+}
+
+function formatResponseJson(): void {
+  if (!httpStore.executionResult?.body) {
+    message.warning('暂无响应内容')
+    return
+  }
+  try {
+    const formatted = JSON.stringify(JSON.parse(httpStore.executionResult.body), null, 2)
+    httpStore.executionResult = {
+      ...httpStore.executionResult,
+      body: formatted
+    }
+    message.success('响应 JSON 已格式化')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '响应内容不是合法 JSON')
   }
 }
 
@@ -515,28 +559,6 @@ async function executeActiveRequest(): Promise<void> {
   }
 }
 
-async function clearActiveRequestHistory(): Promise<void> {
-  try {
-    const result = await httpStore.clearActiveRequestHistory()
-    message[result.ok ? 'success' : 'warning'](
-      result.ok ? `已清空 ${result.removed} 条请求历史` : '当前请求暂无可清空历史'
-    )
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
-
-async function executeActiveCollectionBatch(): Promise<void> {
-  try {
-    const result = await httpStore.executeActiveCollectionBatch()
-    message[result.summary.failed === 0 ? 'success' : 'warning'](
-      `批量测试完成：成功 ${result.summary.succeeded}，失败 ${result.summary.failed}，共 ${result.summary.total}`
-    )
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
-
 function openExportModal(format: ExportFormat): void {
   if (!httpStore.activeRequest) {
     message.warning('请先选择一个 HTTP 请求')
@@ -648,6 +670,13 @@ watch(
   }
 )
 
+watch(
+  () => httpStore.activeRequest?.id,
+  () => {
+    syncEditorFromActiveRequest()
+  }
+)
+
 onMounted(() => {
   void httpStore.load()
   if (!aiSettingsStore.hasLoaded) {
@@ -660,68 +689,100 @@ onMounted(() => {
   <div class="http-lab-shell">
     <aside class="http-lab-sidebar">
       <NCard class="soft-card http-sub-sidebar-panel" :bordered="false">
-        <section class="http-rail-section">
-          <div class="card-title-row">
-            <div>
-              <strong>Collections</strong>
-              <p class="muted">业务域 / 模块分组</p>
-            </div>
-            <NButton size="small" secondary @click="openCreateCollectionModal">新增</NButton>
-          </div>
-
-          <div class="http-collections-list">
-            <button
-              v-for="collection in httpStore.collections"
-              :key="collection.id"
-              class="tool-nav-item http-collection-item"
-              :class="{ active: collection.id === httpStore.activeCollectionId }"
-              type="button"
-              @click="httpStore.setActiveCollection(collection.id)"
-            >
-              <div>
-                <strong>{{ collection.name }}</strong>
-                <p>{{ collection.description || '暂无描述' }}</p>
+        <NTabs v-model:value="httpRailTab" type="segment" animated class="http-rail-tabs">
+          <NTabPane name="collections" tab="Collections">
+            <section class="http-rail-section">
+              <div class="card-title-row">
+                <div>
+                  <strong>集合树</strong>
+                  <p class="muted">集合下直接展开请求</p>
+                </div>
+                <NButton size="small" secondary @click="openCreateCollectionModal">新增集合</NButton>
               </div>
-              <NTag size="small" :bordered="false">
-                {{ httpStore.countByCollection(collection.id) }}
-              </NTag>
-            </button>
-          </div>
-        </section>
 
-        <section class="http-rail-section">
-          <div class="card-title-row">
-            <div>
-              <strong>Requests</strong>
-              <p class="muted">当前集合内可见请求</p>
-            </div>
-            <NTag size="small" :bordered="false">{{ httpStore.visibleRequests.length }}</NTag>
-          </div>
+              <div class="http-collections-list http-tree-list">
+                <article
+                  v-for="collection in httpStore.collections"
+                  :key="collection.id"
+                  class="http-tree-group"
+                >
+                  <button
+                    class="tool-nav-item http-collection-item"
+                    :class="{ active: collection.id === httpStore.activeCollectionId }"
+                    type="button"
+                    @click="httpStore.setActiveCollection(collection.id)"
+                  >
+                    <div>
+                      <strong class="http-tree-title">
+                        <span class="http-folder-glyph" aria-hidden="true" />
+                        {{ collection.name }}
+                      </strong>
+                      <p>{{ collection.description || '暂无描述' }}</p>
+                    </div>
+                    <NTag size="small" :bordered="false">
+                      {{ httpStore.countByCollection(collection.id) }}
+                    </NTag>
+                  </button>
 
-          <div v-if="httpStore.visibleRequests.length > 0" class="http-request-list">
-            <button
-              v-for="request in httpStore.visibleRequests"
-              :key="request.id"
-              class="tool-nav-item http-request-item"
-              :class="{ active: request.id === httpStore.activeRequestId }"
-              type="button"
-              @click="httpStore.setActiveRequest(request.id)"
-            >
-              <div>
-                <strong>{{ request.name }}</strong>
-                <p>{{ request.url || '未填写 URL' }}</p>
+                  <div
+                    v-if="collection.id === httpStore.activeCollectionId"
+                    class="http-tree-request-list"
+                  >
+                    <button
+                      v-for="request in httpStore.visibleRequests"
+                      :key="request.id"
+                      class="tool-nav-item http-request-item"
+                      :class="{ active: request.id === httpStore.activeRequestId }"
+                      type="button"
+                      @click="httpStore.setActiveRequest(request.id)"
+                    >
+                      <div>
+                        <strong>{{ request.name }}</strong>
+                        <p>{{ request.url || '未填写 URL' }}</p>
+                      </div>
+                      <span class="http-method-chip" :class="methodClass(request.method)">
+                        {{ request.method }}
+                      </span>
+                    </button>
+                    <NEmpty v-if="httpStore.visibleRequests.length === 0" description="当前集合暂无请求" />
+                  </div>
+                </article>
               </div>
-              <span class="http-method-chip" :class="methodClass(request.method)">
-                {{ request.method }}
-              </span>
-            </button>
-          </div>
-          <NEmpty v-else description="当前集合或搜索条件下还没有请求">
-            <template #extra>
-              <NButton type="primary" @click="openCreateRequestModal">创建第一条请求</NButton>
-            </template>
-          </NEmpty>
-        </section>
+            </section>
+          </NTabPane>
+
+          <NTabPane name="history" tab="History">
+            <section class="http-rail-section">
+              <div class="card-title-row">
+                <div>
+                  <strong>请求历史</strong>
+                  <p class="muted">点击历史可回看响应</p>
+                </div>
+                <NTag size="small" :bordered="false">{{ httpStore.activeRequestHistory.length }}</NTag>
+              </div>
+
+              <div v-if="httpStore.activeRequestHistory.length > 0" class="http-history-list">
+                <button
+                  v-for="history in httpStore.activeRequestHistory"
+                  :key="history.id"
+                  class="tool-nav-item http-history-item"
+                  :class="{ active: history.id === httpStore.activeHistory?.id }"
+                  type="button"
+                  @click="httpStore.setActiveHistory(history.id)"
+                >
+                  <div>
+                    <strong>{{ history.status || 'ERROR' }}</strong>
+                    <p>{{ formatHistoryTime(history.executedAt) }} · {{ history.durationMs }}ms</p>
+                  </div>
+                  <span class="http-status-pill" :class="{ 'is-error': !history.ok }">
+                    {{ history.ok ? 'OK' : 'FAIL' }}
+                  </span>
+                </button>
+              </div>
+              <NEmpty v-else description="当前请求还没有历史" />
+            </section>
+          </NTabPane>
+        </NTabs>
 
         <div class="http-rail-footer">
           <strong>Workspace Snapshot</strong>
@@ -736,28 +797,35 @@ onMounted(() => {
     <section class="http-lab-main">
       <NCard class="soft-card http-lab-toolbar-card" :bordered="false">
         <div class="http-lab-toolbar">
-          <div class="method-row method-row--lab">
-            <span
-              v-if="httpStore.activeRequest"
-              class="method-select method-select--lab"
-              :class="methodClass(httpStore.activeRequest.method)"
-            >
-              {{ httpStore.activeRequest.method }}
-            </span>
+          <div class="method-row method-row--lab http-editor-topline">
+            <NSelect
+              v-model:value="requestForm.method"
+              :options="methodOptions"
+              class="method-select--lab"
+            />
             <NInput
-              :value="httpStore.activeRequest?.url || ''"
-              readonly
+              v-model:value="requestForm.url"
               class="url-input url-input--lab"
-              placeholder="先从左侧选择一个请求"
+              placeholder="https://api.example.com/users/{{userId}}"
             />
             <NButton
               class="primary-btn primary-btn--send"
               type="primary"
               :loading="httpStore.executing"
-              :disabled="!httpStore.activeRequest?.url"
+              :disabled="!editorCanExecute"
               @click="executeActiveRequest"
             >
               SEND
+            </NButton>
+            <NButton
+              class="http-save-button"
+              type="primary"
+              secondary
+              :loading="httpStore.saving"
+              :disabled="!editorCanSave"
+              @click="submitRequest"
+            >
+              保存
             </NButton>
           </div>
 
@@ -787,9 +855,16 @@ onMounted(() => {
 
             <div class="http-toolbar-actions">
               <NButton secondary :loading="httpStore.loading" @click="httpStore.load">刷新</NButton>
-              <NButton secondary @click="openCreateRequestModal">新增请求</NButton>
+              <NButton secondary @click="openCreateRequestModal">新建草稿</NButton>
               <NButton secondary @click="curlImportModalVisible = true">导入 cURL</NButton>
               <NButton secondary @click="collectionImportModalVisible = true">导入集合</NButton>
+              <NButton
+                secondary
+                :disabled="!aiSettingsStore.isFeatureEnabled('http') || !httpStore.activeRequest"
+                @click="explainHttpWithAi"
+              >
+                AI 分析
+              </NButton>
             </div>
           </div>
 
@@ -806,108 +881,129 @@ onMounted(() => {
         </div>
       </NCard>
 
-      <NCard v-if="httpStore.activeRequest" class="soft-card http-request-card" :bordered="false">
+      <NCard class="soft-card http-request-card" :bordered="false">
         <template #header>
           <div class="http-request-head">
             <div>
-              <strong>{{ httpStore.activeRequest.name }}</strong>
-              <p>{{ httpStore.activeRequest.description || '暂无描述' }}</p>
+              <strong>{{ editorTitle }}</strong>
+              <p>{{ httpStore.activeCollection?.name || '默认集合' }} · 直接编辑后选择保存</p>
             </div>
-            <span class="http-method-chip" :class="methodClass(httpStore.activeRequest.method)">
-              {{ httpStore.activeRequest.method }}
-            </span>
+            <NButton size="small" secondary @click="openCreateRequestModal">新增请求</NButton>
           </div>
         </template>
 
         <div class="http-lab-request-grid">
           <div class="http-lab-config-panel">
-            <section class="http-kv-section">
+            <section class="http-kv-section http-editor-section">
               <div class="card-title-row">
-                <strong>Headers</strong>
-                <NTag size="small" :bordered="false">{{ activeRequestHeaders.length }}</NTag>
+                <strong>请求参数</strong>
+                <NTag size="small" :bordered="false">{{ requestEditorTab }}</NTag>
               </div>
-              <div v-if="activeRequestHeaders.length > 0" class="kv-editor">
-                <div v-for="item in activeRequestHeaders" :key="item.id" class="kv-row">
-                  <input :value="item.key" readonly />
-                  <input :value="item.value" readonly />
-                </div>
+              <div class="http-editor-fields">
+                <NInput v-model:value="requestForm.name" placeholder="请求名称，例如：查询用户详情" />
+                <NInput v-model:value="requestForm.description" placeholder="接口说明，可留空" />
               </div>
-              <NEmpty v-else description="暂无启用 Header" />
-            </section>
+              <NTabs v-model:value="requestEditorTab" type="segment" animated class="http-editor-tabs">
+                <NTabPane name="params" tab="Params">
+                  <NInput
+                    v-model:value="requestForm.paramsText"
+                    type="textarea"
+                    :autosize="{ minRows: 8, maxRows: 14 }"
+                    placeholder="一行一个键值，例如：page: 1"
+                  />
+                </NTabPane>
+                <NTabPane name="headers" tab="Headers">
+                  <NInput
+                    v-model:value="requestForm.headersText"
+                    type="textarea"
+                    :autosize="{ minRows: 8, maxRows: 14 }"
+                    placeholder="一行一个键值，例如：Authorization: Bearer {{token}}"
+                  />
+                </NTabPane>
+                <NTabPane name="body" tab="Body / JSON">
+                  <div class="http-body-toolbar">
+                    <NSelect v-model:value="requestForm.bodyType" :options="bodyTypeOptions" />
+                    <NButton secondary @click="formatRequestBodyJson">格式化 JSON</NButton>
+                  </div>
+                  <NInput
+                    v-model:value="requestForm.bodyContent"
+                    type="textarea"
+                    :autosize="{ minRows: 10, maxRows: 18 }"
+                    placeholder='例如：{"name": "{{name}}"}'
+                  />
+                </NTabPane>
+              </NTabs>
 
-            <section class="http-kv-section">
-              <div class="card-title-row">
-                <strong>Params</strong>
-                <NTag size="small" :bordered="false">{{ activeRequestParams.length }}</NTag>
-              </div>
-              <div v-if="activeRequestParams.length > 0" class="kv-editor">
-                <div v-for="item in activeRequestParams" :key="item.id" class="kv-row">
-                  <input :value="item.key" readonly />
-                  <input :value="item.value" readonly />
+              <div class="http-auth-strip">
+                <NSelect v-model:value="requestForm.authType" :options="authTypeOptions" />
+                <NInput
+                  v-if="requestForm.authType === 'bearer'"
+                  v-model:value="requestForm.authToken"
+                  placeholder="Bearer Token，例如 {{token}}"
+                />
+                <div v-if="requestForm.authType === 'basic'" class="http-editor-fields">
+                  <NInput v-model:value="requestForm.authUsername" placeholder="用户名" />
+                  <NInput v-model:value="requestForm.authPassword" type="password" placeholder="密码" />
                 </div>
+                <NInput v-model:value="requestForm.tagsText" placeholder="标签，用逗号分隔" />
               </div>
-              <NEmpty v-else description="暂无启用参数" />
             </section>
           </div>
 
           <div class="http-lab-detail-panel">
-            <section class="http-detail-block">
-              <div class="http-request-meta">
-                <div>
-                  <strong>Body</strong>
-                  <span>{{ httpStore.activeRequest.body.type }}</span>
-                </div>
-                <div>
-                  <strong>Auth</strong>
-                  <span>{{ httpStore.activeRequest.auth.type }}</span>
-                </div>
-                <div>
-                  <strong>创建</strong>
-                  <span>{{ formatUpdatedAt(httpStore.activeRequest.createdAt) }}</span>
-                </div>
-                <div>
-                  <strong>更新</strong>
-                  <span>{{ formatUpdatedAt(httpStore.activeRequest.updatedAt) }}</span>
-                </div>
-              </div>
-
-              <div v-if="activeRequestTags.length > 0" class="chip-list">
-                <span v-for="tag in activeRequestTags" :key="tag" class="chip">{{ tag }}</span>
-              </div>
-            </section>
-
-            <section class="http-detail-block">
+            <section class="http-detail-block http-response-workbench">
               <div class="card-title-row">
-                <strong>Body Preview</strong>
-                <span class="muted">{{ httpStore.activeRequest.body.type }}</span>
+                <div>
+                  <strong>响应参数</strong>
+                  <p class="muted">发送请求后在这里查看响应 Body、状态和耗时</p>
+                </div>
+                <NButton size="small" secondary @click="formatResponseJson">格式化 JSON</NButton>
               </div>
-              <pre class="http-code-block">{{
-                httpStore.activeRequest.body.content || '暂无 Body'
+
+              <div class="http-response-stats http-response-stats--inline">
+                <div>
+                  <span>状态</span>
+                  <strong>{{
+                    httpStore.executionResult
+                      ? httpStore.executionResult.status || 'ERROR'
+                      : 'WAITING'
+                  }}</strong>
+                </div>
+                <div>
+                  <span>耗时</span>
+                  <strong>{{ httpStore.executionResult?.durationMs ?? 0 }} ms</strong>
+                </div>
+                <div>
+                  <span>大小</span>
+                  <strong>{{ formatBytes(httpStore.executionResult?.bodySizeBytes ?? 0) }}</strong>
+                </div>
+                <div>
+                  <span>环境</span>
+                  <strong>{{
+                    environmentOptions.find((item) => item.value === httpStore.selectedEnvironmentId)?.label ||
+                    '无环境'
+                  }}</strong>
+                </div>
+              </div>
+              <pre class="http-response-preview">{{
+                httpStore.executionResult?.body ||
+                httpStore.executionResult?.errorMessage ||
+                '发送请求后在这里查看响应 Body'
               }}</pre>
             </section>
 
             <section class="http-detail-block">
               <div class="card-title-row">
-                <strong>Actions</strong>
-                <span class="muted">编辑 / 导出 / 分析</span>
+                <strong>导出动作</strong>
+                <span class="muted">当前请求 / 当前集合</span>
               </div>
               <div class="http-editor-actions http-editor-actions--lab">
-                <NButton secondary @click="openEditRequestModal(httpStore.activeRequest)">
-                  编辑请求
-                </NButton>
                 <NButton secondary @click="openExportModal('curl')">导出 cURL</NButton>
                 <NButton secondary @click="openExportModal('httpie')">导出 HTTPie</NButton>
                 <NButton secondary @click="openExportModal('postman')">导出 Postman</NButton>
                 <NButton secondary @click="openExportModal('openapi')">导出 OpenAPI</NButton>
                 <NButton secondary @click="openExportModal('apifox')">导出 Apifox</NButton>
-                <NButton
-                  secondary
-                  :disabled="!aiSettingsStore.isFeatureEnabled('http') || !httpStore.activeRequest"
-                  @click="explainHttpWithAi"
-                >
-                  AI 分析
-                </NButton>
-                <NPopconfirm @positive-click="removeRequest(httpStore.activeRequest.id)">
+                <NPopconfirm v-if="httpStore.activeRequest" @positive-click="removeRequest(httpStore.activeRequest.id)">
                   <template #trigger>
                     <NButton tertiary type="error">删除请求</NButton>
                   </template>
@@ -917,10 +1013,6 @@ onMounted(() => {
             </section>
           </div>
         </div>
-      </NCard>
-
-      <NCard v-else class="soft-card http-empty-card" :bordered="false">
-        <NEmpty description="请选择或创建一个 HTTP 请求" />
       </NCard>
     </section>
 
@@ -977,122 +1069,6 @@ onMounted(() => {
                 ? serializeResponseHeaders(httpStore.executionResult.resolvedRequest.headers) || '未发送 Header'
                 : '等待请求执行'
             }}</pre>
-            <pre class="http-response-preview">{{
-              httpStore.executionResult?.body ||
-              httpStore.executionResult?.errorMessage ||
-              '暂无响应内容'
-            }}</pre>
-          </section>
-
-          <section class="http-section-inset">
-            <div class="http-response-head http-response-head--mini">
-              <div>
-                <strong>批量测试</strong>
-                <p>按当前集合顺序串行执行</p>
-              </div>
-              <NButton
-                size="small"
-                secondary
-                :loading="httpStore.batchExecuting"
-                :disabled="httpStore.visibleRequests.length === 0"
-                @click="executeActiveCollectionBatch"
-              >
-                执行当前集合
-              </NButton>
-            </div>
-
-            <div v-if="httpStore.batchResult" class="http-batch-list">
-              <article
-                v-for="result in httpStore.batchResult.results"
-                :key="`${result.requestId}-${result.executedAt}`"
-                class="http-batch-item"
-              >
-                <div>
-                  <strong>{{ result.resolvedRequest.method }} {{ result.status || 'ERROR' }}</strong>
-                  <p>{{ result.resolvedRequest.url }}</p>
-                </div>
-                <span class="http-status-pill" :class="{ 'is-error': !result.ok }">
-                  {{ result.ok ? `${result.durationMs}ms` : result.errorMessage || 'FAIL' }}
-                </span>
-              </article>
-            </div>
-            <NEmpty v-else description="点击批量测试后在这里查看每条请求的结果" />
-          </section>
-
-          <section class="http-section-inset">
-            <div class="card-title-row">
-              <span>请求历史</span>
-              <NPopconfirm
-                :disabled="httpStore.activeRequestHistory.length === 0"
-                @positive-click="clearActiveRequestHistory"
-              >
-                <template #trigger>
-                  <NButton
-                    size="small"
-                    tertiary
-                    type="error"
-                    :disabled="httpStore.activeRequestHistory.length === 0"
-                  >
-                    清空当前请求
-                  </NButton>
-                </template>
-                只会清空当前请求的执行历史，不会删除请求配置。确定继续？
-              </NPopconfirm>
-            </div>
-
-            <div v-if="httpStore.activeRequestHistory.length > 0" class="http-history-layout">
-              <div class="http-history-list">
-                <button
-                  v-for="history in httpStore.activeRequestHistory"
-                  :key="history.id"
-                  class="tool-nav-item http-history-item"
-                  :class="{ active: history.id === httpStore.activeHistory?.id }"
-                  type="button"
-                  @click="httpStore.setActiveHistory(history.id)"
-                >
-                  <div>
-                    <strong>
-                      {{ history.status || 'ERROR' }}
-                      {{ history.statusText || history.errorMessage || '' }}
-                    </strong>
-                    <p>{{ formatHistoryTime(history.executedAt) }} · {{ history.durationMs }}ms</p>
-                  </div>
-                  <span class="http-status-pill" :class="{ 'is-error': !history.ok }">
-                    {{ history.ok ? 'OK' : 'FAIL' }}
-                  </span>
-                </button>
-              </div>
-
-              <NSpace v-if="httpStore.activeHistory" vertical size="large" class="http-history-detail">
-                <div class="http-response-stats">
-                  <div>
-                    <span>环境</span>
-                    <strong>{{ httpStore.activeHistory.environmentName || '无环境' }}</strong>
-                  </div>
-                  <div>
-                    <span>大小</span>
-                    <strong>{{ formatBytes(httpStore.activeHistory.responseBodySizeBytes) }}</strong>
-                  </div>
-                  <div>
-                    <span>Body</span>
-                    <strong>{{
-                      httpStore.activeHistory.responseBodyTruncated ? '已截断保存' : '完整保存'
-                    }}</strong>
-                  </div>
-                </div>
-                <pre class="http-url-preview">{{ httpStore.activeHistory.url }}</pre>
-                <pre class="http-json-preview">{{
-                  serializeResponseHeaders(httpStore.activeHistory.responseHeaders) || '暂无响应 Header'
-                }}</pre>
-                <pre class="http-response-preview">{{
-                  httpStore.activeHistory.responseBody ||
-                  httpStore.activeHistory.errorMessage ||
-                  '暂无响应内容'
-                }}</pre>
-              </NSpace>
-            </div>
-
-            <NEmpty v-else description="当前请求还没有执行历史" />
           </section>
 
           <section v-if="aiReview.hasResult.value" class="http-section-inset http-ai-review-panel">

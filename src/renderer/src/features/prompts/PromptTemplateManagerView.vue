@@ -473,7 +473,7 @@ onMounted(() => {
           @click="promptsStore.setActiveCategory(category.id)"
         >
           <div>
-            <strong>{{ category.icon }} {{ category.name }}</strong>
+            <strong>{{ category.name }}</strong>
             <p>{{ promptsStore.countByCategory(category.id) }} 个模板</p>
           </div>
           <div class="list-order-actions">
@@ -498,7 +498,7 @@ onMounted(() => {
               ↓
             </NButton>
             <NButton size="tiny" secondary @click.stop="openEditCategoryModal(category.id)"
-              >编辑</NButton
+              >编辑分类</NButton
             >
           </div>
         </button>

@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   NButton,
-  NCard,
   NCollapseTransition,
   NEmpty,
   NIcon,
@@ -11,7 +10,6 @@ import {
   NSlider,
   NRadioButton,
   NRadioGroup,
-  NStatistic,
   NTag,
   useMessage
 } from 'naive-ui'
@@ -199,9 +197,36 @@ onBeforeUnmount(() => {
     </section>
 
     <div class="ai-chat-shell">
-      <section class="ai-chat-canvas">
+      <section class="ai-chat-canvas ai-chat-canvas--wide">
+        <div class="ai-runtime-strip">
+          <div>
+            <span>提供方</span>
+            <strong>{{ aiStore.activeSession?.provider || aiStore.provider }}</strong>
+          </div>
+          <div>
+            <span>阶段</span>
+            <strong>{{ phaseLabel }}</strong>
+          </div>
+          <div>
+            <span>输入 Tokens</span>
+            <strong>{{ aiStore.usage?.inputTokens ?? 0 }}</strong>
+          </div>
+          <div>
+            <span>输出 Tokens</span>
+            <strong>{{ aiStore.usage?.outputTokens ?? 0 }}</strong>
+          </div>
+          <div>
+            <span>最近更新</span>
+            <strong>{{ formatUpdatedAt(aiStore.activeSession?.updatedAt) }}</strong>
+          </div>
+          <div>
+            <span>成本 USD</span>
+            <strong>{{ aiStore.usage?.totalCostUsd ?? 0 }}</strong>
+          </div>
+        </div>
+
         <div class="ai-chat-headline">
-          <strong>消息流</strong>
+          <strong>空间</strong>
           <NTag size="small" :bordered="false">{{ visibleMessages.length }} 条</NTag>
         </div>
         <div v-if="visibleMessages.length > 0" class="chat-area">
@@ -266,43 +291,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
-
-      <div class="ai-chat-side">
-        <NCard class="soft-card ai-runtime-snapshot-card" :bordered="false">
-          <template #header>
-            <div class="card-title-row">
-              <strong>运行摘要</strong>
-              <NTag size="small" :bordered="false">runtime</NTag>
-            </div>
-          </template>
-
-          <div class="ai-runtime-grid ai-runtime-grid--compact">
-            <NStatistic label="提供方" :value="aiStore.activeSession?.provider || aiStore.provider" />
-            <NStatistic label="阶段" :value="phaseLabel" />
-            <NStatistic label="输入 Tokens" :value="aiStore.usage?.inputTokens ?? 0" />
-            <NStatistic label="输出 Tokens" :value="aiStore.usage?.outputTokens ?? 0" />
-          </div>
-
-          <div class="ai-runtime-summary-list">
-            <div class="ai-runtime-summary-item">
-              <span>默认系统提示</span>
-              <strong>{{ aiSettingsStore.settings.systemPrompt || '未设置' }}</strong>
-            </div>
-            <div class="ai-runtime-summary-item">
-              <span>最近更新</span>
-              <strong>{{ formatUpdatedAt(aiStore.activeSession?.updatedAt) }}</strong>
-            </div>
-            <div class="ai-runtime-summary-item">
-              <span>成本 USD</span>
-              <strong>{{ aiStore.usage?.totalCostUsd ?? 0 }}</strong>
-            </div>
-            <div v-if="aiStore.activeSession?.errorMessage" class="ai-runtime-summary-item is-error">
-              <span>错误</span>
-              <strong>{{ aiStore.activeSession.errorMessage }}</strong>
-            </div>
-          </div>
-        </NCard>
-      </div>
     </div>
   </div>
 
