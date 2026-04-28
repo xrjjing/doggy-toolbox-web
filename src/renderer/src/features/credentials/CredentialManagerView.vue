@@ -217,7 +217,7 @@ onMounted(() => {
       <NCard class="soft-card commands-toolbar" :bordered="false">
         <div class="commands-toolbar-row">
           <div class="commands-toolbar-copy">
-            <p class="eyebrow">credential vault</p>
+            <p class="eyebrow">凭证保险库</p>
             <strong>{{ stats.visible }} 条可见凭证</strong>
             <span>{{ stats.total }} 条总记录 · {{ stats.secretEncoding }}</span>
           </div>
@@ -264,7 +264,7 @@ onMounted(() => {
         <section v-if="activeCredential" class="credentials-detail-surface">
           <div class="credentials-detail-head">
             <div>
-              <p class="eyebrow">vault detail</p>
+              <p class="eyebrow">凭证明细</p>
               <strong>{{ activeCredential.service }}</strong>
               <p class="muted">{{ activeCredential.url || '未填写 URL' }}</p>
             </div>
@@ -324,7 +324,11 @@ onMounted(() => {
               {{ isRevealed(activeCredential.id) ? '隐藏' : '显示' }}
             </NButton>
             <NButton size="small" secondary @click="openEditModal(activeCredential)">编辑</NButton>
-            <NPopconfirm @positive-click="deleteCredential(activeCredential.id)">
+            <NPopconfirm
+              negative-text="取消"
+              positive-text="确认删除"
+              @positive-click="deleteCredential(activeCredential.id)"
+            >
               <template #trigger>
                 <NButton size="small" tertiary type="error">删除</NButton>
               </template>

@@ -2,12 +2,16 @@
 import { computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NEmpty, NInput, NModal, NTag } from 'naive-ui'
+import { ZenListItem, ZenModalShell } from '@renderer/components/zen'
 import { useToolSearchStore, type ToolSearchTarget } from '@renderer/stores/tool-search'
 
 const router = useRouter()
 const searchStore = useToolSearchStore()
 
 const selectedTarget = computed(() => searchStore.visibleResults[searchStore.selectedIndex] ?? null)
+const visibleGroups = computed(() =>
+  searchStore.groupedResults.filter((group) => group.targets.length > 0)
+)
 
 /**
  * 搜索弹窗延续旧项目 command palette 的定位：
@@ -53,64 +57,65 @@ watch(
 <template>
   <NModal
     :show="searchStore.isOpen"
-    preset="card"
     class="global-search-modal"
-    title="全局搜索"
     @update:show="(value) => (value ? searchStore.open() : searchStore.close())"
   >
-    <NInput
-      :value="searchStore.query"
-      class="global-search-input"
-      clearable
-      placeholder="搜索工具、模块、拼音或英文关键字，支持方向键和 Enter"
-      @keydown="handleKeydown"
-      @update:value="searchStore.setQuery"
-    />
+    <ZenModalShell eyebrow="Command Palette" title="全局搜索" @close="searchStore.close">
+      <NInput
+        :value="searchStore.query"
+        class="global-search-input"
+        clearable
+        placeholder="搜索工具、模块、拼音或英文关键字"
+        @keydown="handleKeydown"
+        @update:value="searchStore.setQuery"
+      />
 
-    <div class="global-search-results">
-      <template v-if="searchStore.visibleResults.length > 0">
-        <section
-          v-for="group in searchStore.groupedResults"
-          :key="group.title"
-          class="global-search-section"
-        >
-          <p v-if="group.targets.length > 0" class="eyebrow">{{ group.title }}</p>
-          <button
-            v-for="target in group.targets"
-            :key="target.id"
-            class="global-search-item"
-            :class="{
-              active: searchStore.visibleResults[searchStore.selectedIndex]?.id === target.id
-            }"
-            type="button"
-            @click="openTarget(target)"
+      <div class="global-search-results">
+        <template v-if="searchStore.visibleResults.length > 0">
+          <section
+            v-for="group in visibleGroups"
+            :key="group.title"
+            class="global-search-section"
           >
-            <div>
+            <p class="eyebrow">{{ group.title }}</p>
+            <ZenListItem
+              v-for="target in group.targets"
+              :key="target.id"
+              as="button"
+              class="global-search-item"
+              :active="searchStore.visibleResults[searchStore.selectedIndex]?.id === target.id"
+              interactive
+              type="button"
+              @click="openTarget(target)"
+            >
               <strong>{{ target.label }}</strong>
               <p>{{ target.description }}</p>
-            </div>
-            <div class="global-search-meta">
-              <NTag size="small" :bordered="false">{{ target.category }}</NTag>
-              <button
-                class="global-search-favorite"
-                type="button"
-                @click.stop="searchStore.toggleFavorite(target.id)"
-              >
-                {{ searchStore.favorites.has(target.id) ? '★' : '☆' }}
-              </button>
-            </div>
-          </button>
-        </section>
+              <template #meta>
+                <NTag size="small" :bordered="false">{{ target.category }}</NTag>
+                <button
+                  class="global-search-favorite"
+                  type="button"
+                  :aria-label="searchStore.favorites.has(target.id) ? '取消收藏' : '添加收藏'"
+                  @click.stop="searchStore.toggleFavorite(target.id)"
+                >
+                  {{ searchStore.favorites.has(target.id) ? '★' : '☆' }}
+                </button>
+              </template>
+            </ZenListItem>
+          </section>
+        </template>
+
+        <NEmpty v-else description="未找到匹配入口" />
+      </div>
+
+      <template #footer>
+        <div class="global-search-footer">
+          <span>↑↓ 选择</span>
+          <span>Enter 打开</span>
+          <span>Esc 关闭</span>
+          <NButton tertiary size="small" @click="searchStore.close">关闭</NButton>
+        </div>
       </template>
-
-      <NEmpty v-else description="未找到匹配入口" />
-    </div>
-
-    <div class="global-search-footer">
-      <span>↑↓ 选择</span>
-      <span>Enter 打开</span>
-      <span>Esc 关闭</span>
-      <NButton tertiary size="small" @click="searchStore.close">关闭</NButton>
-    </div>
+    </ZenModalShell>
   </NModal>
 </template>

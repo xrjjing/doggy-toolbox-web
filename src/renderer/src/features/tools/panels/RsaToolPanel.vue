@@ -154,7 +154,7 @@ async function copyOutput(): Promise<void> {
   <section class="tool-panel-shell">
     <div class="tool-panel-header">
       <div>
-        <p class="eyebrow">advanced panel</p>
+        <p class="eyebrow">高级面板</p>
         <h3>RSA 加解密</h3>
       </div>
       <NTag size="small" :bordered="false">RSA-OAEP</NTag>
@@ -213,11 +213,11 @@ async function copyOutput(): Promise<void> {
 
     <div class="tool-output-grid">
       <section>
-        <p class="eyebrow">result</p>
+        <p class="eyebrow">处理结果</p>
         <pre class="stream-output">{{ output || '等待执行结果...' }}</pre>
       </section>
       <section>
-        <p class="eyebrow">extra</p>
+        <p class="eyebrow">校验摘要</p>
         <pre class="stream-output">{{ extra || '这里显示密钥校验和当前模式摘要。' }}</pre>
       </section>
     </div>

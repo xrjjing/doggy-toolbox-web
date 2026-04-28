@@ -164,7 +164,7 @@ watch([template, serverName, listenPort, () => JSON.stringify(dynamicValues)], r
   <section class="tool-panel-shell">
     <div class="tool-panel-header">
       <div>
-        <p class="eyebrow">advanced panel</p>
+        <p class="eyebrow">高级面板</p>
         <h3>Nginx 配置生成器</h3>
       </div>
       <NTag size="small" :bordered="false">{{ template }}</NTag>

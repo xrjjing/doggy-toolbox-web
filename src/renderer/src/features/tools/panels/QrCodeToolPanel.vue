@@ -164,7 +164,7 @@ function downloadSvg(): void {
   <section class="tool-panel-shell">
     <div class="tool-panel-header">
       <div>
-        <p class="eyebrow">advanced panel</p>
+        <p class="eyebrow">高级面板</p>
         <h3>二维码生成</h3>
       </div>
       <NTag size="small" :bordered="false">SVG / PNG</NTag>

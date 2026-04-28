@@ -384,7 +384,7 @@ onMounted(() => {
       </div>
 
       <div class="commands-meta">
-        <strong>Repository</strong>
+        <strong>本地资料库</strong>
         <NText depth="3">{{ commandsStore.storageFile || '等待初始化' }}</NText>
         <strong>最近更新</strong>
         <NText depth="3">{{ formatUpdatedAt(commandsStore.updatedAt) }}</NText>
@@ -395,7 +395,7 @@ onMounted(() => {
       <NCard class="soft-card commands-toolbar" :bordered="false">
         <div class="commands-toolbar-row">
           <div class="commands-toolbar-copy">
-            <p class="eyebrow">command library</p>
+            <p class="eyebrow">命令资料库</p>
             <strong>{{ tabSummary }}</strong>
             <span>{{ stats.visible }} / {{ stats.total }} 条命令 · {{ stats.tabs }} 个分组</span>
           </div>
@@ -475,7 +475,7 @@ onMounted(() => {
         <section v-if="activeCommand" class="command-console-panel">
           <div class="command-console-head">
             <div>
-              <p class="eyebrow">terminal preview</p>
+              <p class="eyebrow">终端预览</p>
               <strong>{{ activeCommand.title }}</strong>
               <p class="muted">{{ activeCommand.description || '无描述，适合补一句用途说明。' }}</p>
             </div>
@@ -522,7 +522,11 @@ onMounted(() => {
             <NButton size="small" secondary @click="openEditCommandModal(activeCommand)">
               编辑
             </NButton>
-            <NPopconfirm @positive-click="deleteCommand(activeCommand.id)">
+            <NPopconfirm
+              negative-text="取消"
+              positive-text="确认删除"
+              @positive-click="deleteCommand(activeCommand.id)"
+            >
               <template #trigger>
                 <NButton size="small" tertiary type="error">删除</NButton>
               </template>

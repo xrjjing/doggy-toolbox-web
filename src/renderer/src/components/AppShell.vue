@@ -11,7 +11,7 @@ import {
 } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
-import { NButton, NIcon, NSwitch } from 'naive-ui'
+import { NIcon, NSwitch } from 'naive-ui'
 import {
   ChatbubblesOutline,
   ChevronBackOutline,
@@ -23,6 +23,8 @@ import {
   MenuOutline,
   MoonOutline,
   OptionsOutline,
+  RefreshOutline,
+  SearchOutline,
   TerminalOutline,
   SunnyOutline
 } from '@vicons/ionicons5'
@@ -38,6 +40,7 @@ const GlobalSearchModal = defineAsyncComponent(
 )
 import AppearanceSettingsModal from '@renderer/components/AppearanceSettingsModal.vue'
 import BrandMascot from '@renderer/components/BrandMascot.vue'
+import { ZenButton } from '@renderer/components/zen'
 
 const route = useRoute()
 const appStore = useAppStore()
@@ -49,6 +52,7 @@ const appearanceModalOrigin = ref<AppAppearance>(cloneAppearance(appStore.appear
 const appearanceSavedAt = ref<string | null>(null)
 const isSidebarCollapsed = ref(false)
 const mainPanelRef = ref<HTMLElement | null>(null)
+const mainViewShellRef = ref<HTMLElement | null>(null)
 
 const primaryNavItems = [
   { path: '/tools', label: '开发工具', icon: GridOutline },
@@ -71,6 +75,11 @@ const currentNavLabel = computed(
   () =>
     [...primaryNavItems, ...maintenanceNavItems].find((item) => route.path.startsWith(item.path))
       ?.label ?? '当前页'
+)
+const currentNavItem = computed(
+  () =>
+    [...primaryNavItems, ...maintenanceNavItems].find((item) => route.path.startsWith(item.path)) ??
+    null
 )
 
 function handleGlobalKeydown(event: KeyboardEvent): void {
@@ -97,6 +106,7 @@ watch(
   async () => {
     await nextTick()
     mainPanelRef.value?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    mainViewShellRef.value?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
   }
 )
 
@@ -176,11 +186,13 @@ function toggleSidebar(): void {
       </div>
 
       <nav class="nav-list nav-list--primary">
+        <p v-show="!isSidebarCollapsed" class="nav-section-label">Suite</p>
         <RouterLink
           v-for="item in primaryNavItems"
           :key="item.path"
           class="nav-item"
-          :class="{ active: route.path === item.path }"
+          :class="{ active: route.path.startsWith(item.path) }"
+          :aria-current="route.path.startsWith(item.path) ? 'page' : undefined"
           :title="item.label"
           :to="item.path"
         >
@@ -191,11 +203,13 @@ function toggleSidebar(): void {
 
       <div class="sidebar-footer-stack">
         <nav class="nav-list nav-list--secondary">
+          <p v-show="!isSidebarCollapsed" class="nav-section-label">System</p>
           <RouterLink
             v-for="item in maintenanceNavItems"
             :key="item.path"
             class="nav-item nav-item--secondary"
-            :class="{ active: route.path === item.path }"
+            :class="{ active: route.path.startsWith(item.path) }"
+            :aria-current="route.path.startsWith(item.path) ? 'page' : undefined"
             :title="item.label"
             :to="item.path"
           >
@@ -209,8 +223,11 @@ function toggleSidebar(): void {
     <main ref="mainPanelRef" class="main-panel">
       <header class="topbar zen-workspace-bar">
         <div class="workspace-copy">
-          <p class="eyebrow">workspace</p>
+          <p class="eyebrow">工作区</p>
           <div class="workspace-title-row">
+            <span v-if="currentNavItem" class="workspace-title-icon" aria-hidden="true">
+              <NIcon :component="currentNavItem.icon" />
+            </span>
             <h2>{{ currentNavLabel }}</h2>
             <span class="workspace-runtime">{{ runtimeText }}</span>
           </div>
@@ -222,31 +239,36 @@ function toggleSidebar(): void {
             <NSwitch :value="appStore.isDark" @update:value="appStore.toggleTheme" />
             <NIcon :component="MoonOutline" />
           </div>
-          <NButton secondary round size="small" class="window-action" @click="toolSearchStore.open">
-            全局搜索 ⌘K
-          </NButton>
-          <NButton secondary round size="small" class="window-action" @click="openAppearanceModal">
+          <ZenButton class="window-action" variant="secondary" @click="toolSearchStore.open">
+            <template #icon>
+              <NIcon :component="SearchOutline" />
+            </template>
+            <span>全局搜索</span>
+            <span class="window-action-kbd">⌘K</span>
+          </ZenButton>
+          <ZenButton class="window-action" variant="secondary" @click="openAppearanceModal">
             <template #icon>
               <NIcon :component="OptionsOutline" />
             </template>
             外观设置
-          </NButton>
-          <NButton
-            secondary
-            round
-            size="small"
-            class="window-action"
-            @click="appStore.loadRuntimeInfo()"
-          >
+          </ZenButton>
+          <ZenButton class="window-action" variant="secondary" @click="appStore.loadRuntimeInfo()">
+            <template #icon>
+              <NIcon :component="RefreshOutline" />
+            </template>
             刷新本机配置
-          </NButton>
+          </ZenButton>
         </div>
       </header>
 
-      <div class="main-view-shell">
+      <div ref="mainViewShellRef" class="main-view-shell">
         <RouterView v-slot="{ Component, route: currentRoute }">
           <Transition name="zen-page" mode="out-in">
-            <div :key="currentRoute.fullPath" class="route-view-stage">
+            <div
+              :key="currentRoute.fullPath"
+              class="route-view-stage"
+              :class="{ 'route-view-stage--ai': currentRoute.path.startsWith('/ai') }"
+            >
               <component :is="Component" />
             </div>
           </Transition>

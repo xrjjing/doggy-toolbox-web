@@ -7,11 +7,20 @@ import {
   NTabPane,
   NCheckboxGroup,
   NEmpty,
+  NIcon,
   NInput,
   NPopconfirm,
   NTag,
   useMessage
 } from 'naive-ui'
+import {
+  CloudDoneOutline,
+  CloudDownloadOutline,
+  CloudUploadOutline,
+  DocumentTextOutline,
+  ShieldCheckmarkOutline,
+  SwapHorizontalOutline
+} from '@vicons/ionicons5'
 import type { BackupSectionKey } from '@shared/ipc-contract'
 import { backupSectionOptions, useBackupStore } from '@renderer/stores/backup'
 import { useLegacyImportStore } from '@renderer/stores/legacy-import'
@@ -23,6 +32,9 @@ const sectionLabelMap = new Map(backupSectionOptions.map((option) => [option.val
 
 const exportJson = computed(() =>
   backupStore.exportedDocument ? JSON.stringify(backupStore.exportedDocument, null, 2) : ''
+)
+const backupProgress = computed(() =>
+  Math.min(100, Math.max(18, backupStore.selectedSections.length * 18))
 )
 
 const migrationCards = computed(() => {
@@ -201,13 +213,16 @@ async function importBackup(): Promise<void> {
   <div class="data-center-shell">
     <section class="data-center-main">
       <section class="data-center-progress-island">
+        <div class="data-center-orb">
+          <NIcon :component="CloudDoneOutline" />
+        </div>
         <div class="data-center-progress-copy">
-          <p class="eyebrow">migration protocol</p>
-          <strong>本地迁移 / 备份恢复中心</strong>
-          <p>先识别旧项目数据，再决定导入模块。底部统一处理新仓备份导出与恢复。</p>
+          <p class="eyebrow">本地数据协议</p>
+          <strong>备份与迁移控制台</strong>
+          <p>先识别旧项目数据，再选择导入模块；备份导出和覆盖恢复统一在同一条流程内确认。</p>
         </div>
         <div class="data-center-progress-track">
-          <span :style="{ width: `${Math.min(100, Math.max(18, backupStore.selectedSections.length * 18))}%` }" />
+          <span :style="{ width: `${backupProgress}%` }" />
         </div>
         <div class="data-center-progress-meta">
           <span>当前备份模块 {{ backupStore.selectedSections.length }}</span>
@@ -219,10 +234,10 @@ async function importBackup(): Promise<void> {
         <template #header>
           <div class="card-title-row">
             <div>
-              <p class="eyebrow">legacy migration</p>
+              <p class="eyebrow">旧项目迁移</p>
               <strong>旧项目导入</strong>
             </div>
-            <NTag size="small" :bordered="false">Step 1</NTag>
+            <NTag size="small" :bordered="false">识别</NTag>
           </div>
         </template>
 
@@ -245,6 +260,9 @@ async function importBackup(): Promise<void> {
             />
             <div class="action-row">
               <NButton type="primary" :loading="legacyImportStore.loading" @click="analyzeSource">
+                <template #icon>
+                  <NIcon :component="DocumentTextOutline" />
+                </template>
                 识别旧数据类型
               </NButton>
             </div>
@@ -253,7 +271,10 @@ async function importBackup(): Promise<void> {
           <div class="data-center-side-stack">
             <section class="data-center-insight-card">
               <div class="card-title-row">
-                <strong>识别结果</strong>
+                <strong>
+                  <NIcon :component="ShieldCheckmarkOutline" />
+                  识别结果
+                </strong>
                 <NTag
                   v-if="legacyImportStore.analysis"
                   size="small"
@@ -282,9 +303,12 @@ async function importBackup(): Promise<void> {
               <NEmpty v-else description="先识别一次旧 JSON，再决定导入哪些模块" />
             </section>
 
-            <section v-if="legacyImportStore.analysis" class="data-center-insight-card">
+            <section v-if="legacyImportStore.analysis" class="data-center-insight-card data-center-risk-card">
               <div class="card-title-row">
-                <strong>导入模块</strong>
+                <strong>
+                  <NIcon :component="SwapHorizontalOutline" />
+                  导入模块
+                </strong>
                 <NTag size="small" :bordered="false">可选</NTag>
               </div>
               <NCheckboxGroup
@@ -299,7 +323,11 @@ async function importBackup(): Promise<void> {
                 <NTag size="small" :bordered="false" type="info">
                   当前选择：{{ formatSections(legacyImportStore.selectedSections) || '未选择' }}
                 </NTag>
-                <NPopconfirm @positive-click="importSource">
+                <NPopconfirm
+                  negative-text="取消"
+                  positive-text="确认执行"
+                  @positive-click="importSource"
+                >
                   <template #trigger>
                     <NButton
                       type="error"
@@ -346,10 +374,10 @@ async function importBackup(): Promise<void> {
         <template #header>
           <div class="card-title-row">
             <div>
-              <p class="eyebrow">migration operations</p>
+              <p class="eyebrow">本地备份协议</p>
               <strong>导入 / 备份 / 恢复</strong>
             </div>
-            <NTag size="small" :bordered="false">Bottom Rail</NTag>
+            <NTag size="small" :bordered="false">可审计</NTag>
           </div>
         </template>
 
@@ -380,7 +408,10 @@ async function importBackup(): Promise<void> {
               <div class="data-center-side-stack">
                 <section class="data-center-insight-card">
                   <div class="card-title-row">
-                    <strong>备份范围</strong>
+                    <strong>
+                      <NIcon :component="ShieldCheckmarkOutline" />
+                      备份范围
+                    </strong>
                     <NTag size="small" :bordered="false">v1.0</NTag>
                   </div>
                   <NCheckboxGroup
@@ -395,17 +426,26 @@ async function importBackup(): Promise<void> {
 
                 <section class="data-center-insight-card">
                   <div class="card-title-row">
-                    <strong>导出动作</strong>
-                    <NTag size="small" :bordered="false">safe first</NTag>
+                    <strong>
+                      <NIcon :component="CloudUploadOutline" />
+                      导出动作
+                    </strong>
+                    <NTag size="small" :bordered="false">本地生成</NTag>
                   </div>
                   <div class="data-center-action-stack">
                     <NButton type="primary" :loading="backupStore.loading" @click="exportBackup">
+                      <template #icon>
+                        <NIcon :component="CloudUploadOutline" />
+                      </template>
                       生成备份 JSON
                     </NButton>
                     <NButton secondary :disabled="!backupStore.hasExport" @click="copyBackup">
                       复制 JSON
                     </NButton>
                     <NButton secondary :disabled="!backupStore.hasExport" @click="downloadBackup">
+                      <template #icon>
+                        <NIcon :component="CloudDownloadOutline" />
+                      </template>
                       下载 JSON
                     </NButton>
                   </div>
@@ -438,13 +478,20 @@ async function importBackup(): Promise<void> {
                   </p>
                 </section>
 
-                <section class="data-center-insight-card">
+                <section class="data-center-insight-card data-center-risk-card">
                   <div class="card-title-row">
-                    <strong>恢复动作</strong>
+                    <strong>
+                      <NIcon :component="CloudDownloadOutline" />
+                      恢复动作
+                    </strong>
                     <NTag size="small" :bordered="false">高风险</NTag>
                   </div>
                   <div class="data-center-action-stack">
-                    <NPopconfirm @positive-click="importBackup">
+                    <NPopconfirm
+                      negative-text="取消"
+                      positive-text="确认执行"
+                      @positive-click="importBackup"
+                    >
                       <template #trigger>
                         <NButton type="error" secondary :loading="backupStore.loading">
                           覆盖恢复所选模块

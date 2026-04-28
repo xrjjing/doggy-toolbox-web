@@ -690,7 +690,7 @@ onMounted(() => {
     <aside class="http-lab-sidebar">
       <NCard class="soft-card http-sub-sidebar-panel" :bordered="false">
         <NTabs v-model:value="httpRailTab" type="segment" animated class="http-rail-tabs">
-          <NTabPane name="collections" tab="Collections">
+          <NTabPane name="collections" tab="集合">
             <section class="http-rail-section">
               <div class="card-title-row">
                 <div>
@@ -751,7 +751,7 @@ onMounted(() => {
             </section>
           </NTabPane>
 
-          <NTabPane name="history" tab="History">
+          <NTabPane name="history" tab="历史">
             <section class="http-rail-section">
               <div class="card-title-row">
                 <div>
@@ -785,7 +785,7 @@ onMounted(() => {
         </NTabs>
 
         <div class="http-rail-footer">
-          <strong>Workspace Snapshot</strong>
+          <strong>工作区快照</strong>
           <NText depth="3">集合 {{ stats.collections }} · 请求 {{ stats.requests }}</NText>
           <NText depth="3">环境 {{ stats.environments }} · 历史 {{ stats.history }}</NText>
           <NText depth="3">{{ httpStore.storageFile || '等待初始化' }}</NText>
@@ -815,7 +815,7 @@ onMounted(() => {
               :disabled="!editorCanExecute"
               @click="executeActiveRequest"
             >
-              SEND
+              发送
             </NButton>
             <NButton
               class="http-save-button"
@@ -869,13 +869,13 @@ onMounted(() => {
           </div>
 
           <div class="http-request-action-set">
-            <span class="http-config-pill">Headers {{ activeRequestHeaders.length }}</span>
-            <span class="http-config-pill">Params {{ activeRequestParams.length }}</span>
+            <span class="http-config-pill">Header {{ activeRequestHeaders.length }}</span>
+            <span class="http-config-pill">参数 {{ activeRequestParams.length }}</span>
             <span class="http-config-pill">
               Body {{ httpStore.activeRequest?.body.type || 'none' }}
             </span>
             <span class="http-config-pill">
-              Auth {{ httpStore.activeRequest?.auth.type || 'none' }}
+              认证 {{ httpStore.activeRequest?.auth.type || 'none' }}
             </span>
           </div>
         </div>
@@ -1003,7 +1003,12 @@ onMounted(() => {
                 <NButton secondary @click="openExportModal('postman')">导出 Postman</NButton>
                 <NButton secondary @click="openExportModal('openapi')">导出 OpenAPI</NButton>
                 <NButton secondary @click="openExportModal('apifox')">导出 Apifox</NButton>
-                <NPopconfirm v-if="httpStore.activeRequest" @positive-click="removeRequest(httpStore.activeRequest.id)">
+                <NPopconfirm
+                  v-if="httpStore.activeRequest"
+                  negative-text="取消"
+                  positive-text="确认删除"
+                  @positive-click="removeRequest(httpStore.activeRequest.id)"
+                >
                   <template #trigger>
                     <NButton tertiary type="error">删除请求</NButton>
                   </template>
@@ -1114,7 +1119,11 @@ onMounted(() => {
                 <NButton size="small" secondary @click="openEditEnvironmentModal(environment)">
                   编辑
                 </NButton>
-                <NPopconfirm @positive-click="removeEnvironment(environment.id)">
+                <NPopconfirm
+                  negative-text="取消"
+                  positive-text="确认删除"
+                  @positive-click="removeEnvironment(environment.id)"
+                >
                   <template #trigger>
                     <NButton size="small" tertiary type="error">删除</NButton>
                   </template>

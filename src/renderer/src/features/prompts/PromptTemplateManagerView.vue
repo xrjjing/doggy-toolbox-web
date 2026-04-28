@@ -505,7 +505,7 @@ onMounted(() => {
       </div>
 
       <div class="commands-meta">
-        <strong>Repository</strong>
+        <strong>本地资料库</strong>
         <NText depth="3">{{ promptsStore.storageFile || '等待初始化' }}</NText>
         <strong>最近更新</strong>
         <NText depth="3">{{ formatUpdatedAt(promptsStore.updatedAt) }}</NText>
@@ -516,7 +516,7 @@ onMounted(() => {
       <NCard class="soft-card commands-toolbar" :bordered="false">
         <div class="prompts-toolbar-row">
           <div class="commands-toolbar-copy">
-            <p class="eyebrow">prompt studio</p>
+            <p class="eyebrow">Prompt 工作室</p>
             <strong>{{ activeCategoryLabel }}</strong>
             <span>{{ stats.visible }} / {{ stats.templates }} 个模板 · 收藏 {{ stats.favorites }}</span>
           </div>
@@ -589,14 +589,14 @@ onMounted(() => {
               </div>
               <p>{{ template.description || '未填写描述' }}</p>
             </div>
-            <span class="prompt-row-meta">{{ template.variables.length }} var</span>
+            <span class="prompt-row-meta">{{ template.variables.length }} 变量</span>
           </button>
         </section>
 
         <section v-if="activeTemplate" class="prompt-editor-surface">
           <div class="prompt-editor-head">
             <div>
-              <p class="eyebrow">template editor</p>
+              <p class="eyebrow">模板编辑器</p>
               <strong>{{ activeTemplate.title }}</strong>
               <p class="muted">{{ activeTemplate.description || '未填写描述' }}</p>
             </div>
@@ -643,7 +643,11 @@ onMounted(() => {
               下移
             </NButton>
             <NButton size="small" secondary @click="openEditTemplateModal(activeTemplate)">编辑</NButton>
-            <NPopconfirm @positive-click="deleteTemplate(activeTemplate.id)">
+            <NPopconfirm
+              negative-text="取消"
+              positive-text="确认删除"
+              @positive-click="deleteTemplate(activeTemplate.id)"
+            >
               <template #trigger>
                 <NButton size="small" tertiary type="error">删除</NButton>
               </template>
@@ -678,7 +682,12 @@ onMounted(() => {
         <NInput v-model:value="categoryForm.icon" maxlength="8" placeholder="可留空，例如 </>" />
       </NFormItem>
       <div class="action-row modal-actions">
-        <NPopconfirm v-if="isCategoryEdit" @positive-click="deleteCategory(categoryForm.id || '')">
+        <NPopconfirm
+          v-if="isCategoryEdit"
+          negative-text="取消"
+          positive-text="确认删除"
+          @positive-click="deleteCategory(categoryForm.id || '')"
+        >
           <template #trigger>
             <NButton tertiary type="error">删除分类</NButton>
           </template>

@@ -605,7 +605,7 @@ watch(
   <section class="tool-panel-shell">
     <div class="tool-panel-header">
       <div>
-        <p class="eyebrow">advanced panel</p>
+        <p class="eyebrow">高级面板</p>
         <h3>Git 命令生成器</h3>
       </div>
       <NTag size="small" :bordered="false">{{ scene }}</NTag>

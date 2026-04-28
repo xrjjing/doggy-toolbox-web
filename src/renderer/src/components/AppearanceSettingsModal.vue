@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NCheckbox, NInputNumber, NSelect, NSlider, NTag } from 'naive-ui'
+import { ZenButton, ZenModalShell, ZenPanel } from '@renderer/components/zen'
 import {
   appThemeOptions,
   cloneAppearance,
@@ -97,41 +98,33 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="appearance-settings-backdrop" @click.self="closeWithRestore">
-    <section class="appearance-settings-modal" role="dialog" aria-modal="true" aria-label="外观设置">
-      <header class="appearance-settings-header">
-        <div class="card-title-row">
-          <div>
-            <p class="eyebrow">appearance modal</p>
-            <h3>外观设置</h3>
-          </div>
-          <NTag size="small" :bordered="false">
-            {{ isDirty ? '有未保存修改' : '已同步' }}
-          </NTag>
-        </div>
-        <button
-          class="appearance-settings-close"
-          type="button"
-          @click="closeWithRestore"
-        >
-          ×
-        </button>
-      </header>
+    <ZenModalShell
+      class="appearance-settings-modal"
+      eyebrow="Appearance"
+      title="外观设置"
+      @close="closeWithRestore"
+    >
+      <template #status>
+        <NTag size="small" :bordered="false">
+          {{ isDirty ? '有未保存修改' : '已同步' }}
+        </NTag>
+      </template>
 
       <div class="appearance-settings-body">
         <p class="muted">
-          这里补回旧项目的设置弹窗体验：修改时先预览，保存后才持久化；直接关闭会恢复到打开前的状态。
+          修改会即时预览；保存后才持久化，直接关闭会恢复到打开前的状态。
         </p>
 
-        <section class="appearance-modal-section">
+        <ZenPanel as="section" class="appearance-modal-section" tone="soft">
           <label class="appearance-modal-label">主题</label>
           <NSelect
             :value="draft.theme"
             :options="appThemeOptions"
             @update:value="(theme) => patchDraft({ theme })"
           />
-        </section>
+        </ZenPanel>
 
-        <section class="appearance-modal-section">
+        <ZenPanel as="section" class="appearance-modal-section" tone="soft">
           <div class="appearance-modal-inline">
             <label class="appearance-modal-label">毛玻璃</label>
             <NCheckbox
@@ -164,9 +157,9 @@ onBeforeUnmount(() => {
               @update:value="(glassOpacity) => patchDraft({ glassOpacity })"
             />
           </div>
-        </section>
+        </ZenPanel>
 
-        <section class="appearance-modal-section">
+        <ZenPanel as="section" class="appearance-modal-section" tone="soft">
           <div class="appearance-modal-slider">
             <div class="appearance-modal-slider-head">
               <span>UI 缩放 {{ mapUiScaleDisplayPercent(draft.uiScale) }}%</span>
@@ -188,43 +181,25 @@ onBeforeUnmount(() => {
               @update:value="(uiScale) => patchDraft({ uiScale: resolveUiScaleDisplayPercent(uiScale) })"
             />
           </div>
-        </section>
+        </ZenPanel>
 
-        <section class="appearance-modal-section">
+        <ZenPanel as="section" class="appearance-modal-section" tone="soft">
           <label class="appearance-modal-label">标题栏视觉模式</label>
           <NSelect
             :value="draft.titlebarMode"
             :options="titlebarModeOptions"
             @update:value="(titlebarMode) => patchDraft({ titlebarMode })"
           />
-        </section>
-
-        <div class="appearance-actions">
-          <button
-            class="appearance-action-button is-tertiary is-left"
-            type="button"
-            @click="resetDraft"
-          >
-            恢复默认
-          </button>
-          <button
-            class="appearance-action-button is-secondary"
-            type="button"
-            @click="closeWithRestore"
-          >
-            取消并恢复
-          </button>
-          <button
-            class="appearance-action-button is-primary"
-            :class="{ 'is-disabled': !isDirty }"
-            type="button"
-            :disabled="!isDirty"
-            @click="saveDraft"
-          >
-            保存设置
-          </button>
-        </div>
+        </ZenPanel>
       </div>
-    </section>
+
+      <template #footer>
+        <div class="appearance-actions">
+          <ZenButton class="is-left" variant="tertiary" @click="resetDraft">恢复默认</ZenButton>
+          <ZenButton variant="secondary" @click="closeWithRestore">取消并恢复</ZenButton>
+          <ZenButton variant="primary" :disabled="!isDirty" @click="saveDraft">保存设置</ZenButton>
+        </div>
+      </template>
+    </ZenModalShell>
   </div>
 </template>

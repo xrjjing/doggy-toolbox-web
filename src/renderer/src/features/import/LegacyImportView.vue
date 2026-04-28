@@ -5,12 +5,17 @@ import {
   NCard,
   NCheckboxGroup,
   NEmpty,
+  NIcon,
   NInput,
   NPopconfirm,
-  NSpace,
   NTag,
   useMessage
 } from 'naive-ui'
+import {
+  DocumentTextOutline,
+  ShieldCheckmarkOutline,
+  SwapHorizontalOutline
+} from '@vicons/ionicons5'
 import type { BackupSectionKey } from '@shared/ipc-contract'
 import { backupSectionOptions } from '@renderer/stores/backup'
 import { useLegacyImportStore } from '@renderer/stores/legacy-import'
@@ -49,6 +54,11 @@ const sectionOptions = computed(() =>
     legacyImportStore.availableSections.includes(option.value)
   )
 )
+const importProgress = computed(() => {
+  if (legacyImportStore.importResult) return 100
+  if (legacyImportStore.hasAnalysis) return Math.max(48, legacyImportStore.selectedSections.length * 24)
+  return 18
+})
 
 function formatSections(sections: BackupSectionKey[]): string {
   return sections.map((section) => sectionLabelMap.get(section) ?? section).join('、')
@@ -106,6 +116,24 @@ async function importSource(): Promise<void> {
 </script>
 
 <template>
+  <section class="data-center-progress-island backup-progress-hero">
+    <div class="data-center-orb">
+      <NIcon :component="SwapHorizontalOutline" />
+    </div>
+    <div class="data-center-progress-copy">
+      <p class="eyebrow">旧项目迁移</p>
+      <strong>识别、选择、确认导入</strong>
+      <p>先由后端识别 JSON 来源和可导入模块，再选择范围并通过确认弹层执行真实写入。</p>
+    </div>
+    <div class="data-center-progress-track">
+      <span :style="{ width: `${importProgress}%` }" />
+    </div>
+    <div class="data-center-progress-meta">
+      <span>{{ legacyImportStore.hasAnalysis ? '已识别来源' : '等待识别' }}</span>
+      <span>已选 {{ legacyImportStore.selectedSections.length }} 个模块</span>
+    </div>
+  </section>
+
   <section class="backup-summary-grid">
     <article v-for="card in summaryCards" :key="card.label" class="progress-card">
       <div class="progress-head">
@@ -116,10 +144,18 @@ async function importSource(): Promise<void> {
     </article>
   </section>
 
-  <div class="backup-shell">
-    <NCard class="soft-card" :bordered="false">
-      <template #header>导入源 JSON</template>
-      <NSpace vertical size="large">
+  <div class="backup-shell backup-zen-shell legacy-zen-shell">
+    <NCard class="soft-card backup-flow-card" :bordered="false">
+      <template #header>
+        <div class="card-title-row">
+          <strong>
+            <NIcon :component="DocumentTextOutline" />
+            导入源 JSON
+          </strong>
+          <NTag size="small" :bordered="false">只读识别</NTag>
+        </div>
+      </template>
+      <div class="backup-flow-stack">
         <!-- 原始 JSON 文本由 store 暂存；一旦用户改动文本，旧分析和旧导入结果会被清空。 -->
         <NInput
           :value="legacyImportStore.sourceJson"
@@ -131,14 +167,25 @@ async function importSource(): Promise<void> {
 
         <div class="action-row">
           <NButton type="primary" :loading="legacyImportStore.loading" @click="analyzeSource">
+            <template #icon>
+              <NIcon :component="DocumentTextOutline" />
+            </template>
             识别旧数据类型
           </NButton>
         </div>
-      </NSpace>
+      </div>
     </NCard>
 
-    <NCard class="soft-card" :bordered="false">
-      <template #header>识别结果</template>
+    <NCard class="soft-card backup-flow-card" :bordered="false">
+      <template #header>
+        <div class="card-title-row">
+          <strong>
+            <NIcon :component="ShieldCheckmarkOutline" />
+            识别结果
+          </strong>
+          <NTag size="small" :bordered="false">预检</NTag>
+        </div>
+      </template>
 
       <div v-if="legacyImportStore.analysis" class="legacy-analysis">
         <!-- 这里展示的是 analyze 阶段的只读结果，目的是在导入前先讲清来源和影响范围。 -->
@@ -162,10 +209,18 @@ async function importSource(): Promise<void> {
 
     <NCard
       v-if="legacyImportStore.analysis"
-      class="soft-card backup-options-card"
+      class="soft-card backup-options-card backup-flow-card backup-risk-panel"
       :bordered="false"
     >
-      <template #header>导入模块</template>
+      <template #header>
+        <div class="card-title-row">
+          <strong>
+            <NIcon :component="SwapHorizontalOutline" />
+            导入模块
+          </strong>
+          <NTag size="small" :bordered="false" type="warning">确认后写入</NTag>
+        </div>
+      </template>
 
       <!-- 复选框只允许选择当前来源真实支持的 section。 -->
       <NCheckboxGroup
@@ -184,7 +239,11 @@ async function importSource(): Promise<void> {
         </NTag>
 
         <div>
-          <NPopconfirm @positive-click="importSource">
+          <NPopconfirm
+            negative-text="取消"
+            positive-text="确认执行"
+            @positive-click="importSource"
+          >
             <template #trigger>
               <NButton
                 type="error"
@@ -201,8 +260,13 @@ async function importSource(): Promise<void> {
       </div>
     </NCard>
 
-    <NCard v-if="legacyImportStore.importResult" class="soft-card" :bordered="false">
-      <template #header>最近一次导入结果</template>
+    <NCard v-if="legacyImportStore.importResult" class="soft-card backup-flow-card" :bordered="false">
+      <template #header>
+        <div class="card-title-row">
+          <strong>最近一次导入结果</strong>
+          <NTag size="small" :bordered="false">完成</NTag>
+        </div>
+      </template>
 
       <!-- 这里展示的是 import 阶段的最终结果，与上面的 analysis 预估结果明确分层。 -->
       <div class="legacy-analysis">

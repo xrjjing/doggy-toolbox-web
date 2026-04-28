@@ -5,12 +5,17 @@ import {
   NCard,
   NCheckboxGroup,
   NEmpty,
+  NIcon,
   NInput,
   NPopconfirm,
-  NSpace,
   NTag,
   useMessage
 } from 'naive-ui'
+import {
+  CloudDownloadOutline,
+  CloudUploadOutline,
+  ShieldCheckmarkOutline
+} from '@vicons/ionicons5'
 import type { BackupSectionKey } from '@shared/ipc-contract'
 import { backupSectionOptions, useBackupStore } from '@renderer/stores/backup'
 
@@ -19,6 +24,9 @@ const backupStore = useBackupStore()
 
 const exportJson = computed(() =>
   backupStore.exportedDocument ? JSON.stringify(backupStore.exportedDocument, null, 2) : ''
+)
+const backupProgress = computed(() =>
+  Math.min(100, Math.max(18, backupStore.selectedSections.length * 18))
 )
 const summaryCards = computed(() => {
   const summary = backupStore.exportedDocument?.summary ?? backupStore.importResult?.summary
@@ -99,6 +107,24 @@ async function importBackup(): Promise<void> {
 </script>
 
 <template>
+  <section class="data-center-progress-island backup-progress-hero">
+    <div class="data-center-orb">
+      <NIcon :component="CloudUploadOutline" />
+    </div>
+    <div class="data-center-progress-copy">
+      <p class="eyebrow">本地备份协议</p>
+      <strong>备份与覆盖恢复</strong>
+      <p>按模块生成可复制、可下载的 JSON。恢复前必须经过确认，不绕过原有覆盖语义。</p>
+    </div>
+    <div class="data-center-progress-track">
+      <span :style="{ width: `${backupProgress}%` }" />
+    </div>
+    <div class="data-center-progress-meta">
+      <span>当前模块 {{ backupStore.selectedSections.length }}</span>
+      <span>协议 v1.0</span>
+    </div>
+  </section>
+
   <section class="backup-summary-grid">
     <article v-for="card in summaryCards" :key="card.label" class="progress-card">
       <div class="progress-head">
@@ -109,11 +135,14 @@ async function importBackup(): Promise<void> {
     </article>
   </section>
 
-  <div class="backup-shell">
-    <NCard class="soft-card backup-options-card" :bordered="false">
+  <div class="backup-shell backup-zen-shell">
+    <NCard class="soft-card backup-options-card backup-flow-card" :bordered="false">
       <template #header>
         <div class="card-title-row">
-          <span>备份范围</span>
+          <strong>
+            <NIcon :component="ShieldCheckmarkOutline" />
+            备份范围
+          </strong>
           <NTag size="small" :bordered="false">v1.0</NTag>
         </div>
       </template>
@@ -131,17 +160,31 @@ async function importBackup(): Promise<void> {
       </p>
     </NCard>
 
-    <NCard class="soft-card" :bordered="false">
-      <template #header>导出备份</template>
-      <NSpace vertical size="large">
+    <NCard class="soft-card backup-flow-card" :bordered="false">
+      <template #header>
+        <div class="card-title-row">
+          <strong>
+            <NIcon :component="CloudUploadOutline" />
+            导出备份
+          </strong>
+          <NTag size="small" :bordered="false">本地生成</NTag>
+        </div>
+      </template>
+      <div class="backup-flow-stack">
         <div class="action-row">
           <NButton type="primary" :loading="backupStore.loading" @click="exportBackup">
+            <template #icon>
+              <NIcon :component="CloudUploadOutline" />
+            </template>
             生成备份 JSON
           </NButton>
           <NButton secondary :disabled="!backupStore.hasExport" @click="copyBackup">
             复制 JSON
           </NButton>
           <NButton secondary :disabled="!backupStore.hasExport" @click="downloadBackup">
+            <template #icon>
+              <NIcon :component="CloudDownloadOutline" />
+            </template>
             下载 JSON
           </NButton>
         </div>
@@ -153,13 +196,23 @@ async function importBackup(): Promise<void> {
           readonly
           :autosize="{ minRows: 12, maxRows: 18 }"
         />
-        <NEmpty v-else description="还没有生成备份" />
-      </NSpace>
+        <div v-else class="data-center-empty-state">
+          <NEmpty description="还没有生成备份" />
+        </div>
+      </div>
     </NCard>
 
-    <NCard class="soft-card" :bordered="false">
-      <template #header>恢复备份</template>
-      <NSpace vertical size="large">
+    <NCard class="soft-card backup-flow-card backup-risk-panel" :bordered="false">
+      <template #header>
+        <div class="card-title-row">
+          <strong>
+            <NIcon :component="CloudDownloadOutline" />
+            恢复备份
+          </strong>
+          <NTag size="small" :bordered="false" type="warning">覆盖写入</NTag>
+        </div>
+      </template>
+      <div class="backup-flow-stack">
         <NInput
           :value="backupStore.importText"
           type="textarea"
@@ -169,7 +222,11 @@ async function importBackup(): Promise<void> {
         />
 
         <div class="action-row">
-          <NPopconfirm @positive-click="importBackup">
+          <NPopconfirm
+            negative-text="取消"
+            positive-text="确认执行"
+            @positive-click="importBackup"
+          >
             <template #trigger>
               <NButton type="error" secondary :loading="backupStore.loading">
                 覆盖恢复所选模块
@@ -178,7 +235,7 @@ async function importBackup(): Promise<void> {
             恢复会覆盖所选模块当前数据。此操作不可自动撤销，确认继续？
           </NPopconfirm>
         </div>
-      </NSpace>
+      </div>
     </NCard>
   </div>
 </template>

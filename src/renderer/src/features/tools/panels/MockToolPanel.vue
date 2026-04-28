@@ -96,7 +96,7 @@ async function copyOutput(): Promise<void> {
   <section class="tool-panel-shell">
     <div class="tool-panel-header">
       <div>
-        <p class="eyebrow">advanced panel</p>
+        <p class="eyebrow">高级面板</p>
         <h3>Mock 数据生成</h3>
       </div>
       <NTag size="small" :bordered="false">faker-lite</NTag>
@@ -138,11 +138,11 @@ async function copyOutput(): Promise<void> {
 
     <div class="tool-output-grid">
       <section>
-        <p class="eyebrow">result</p>
+        <p class="eyebrow">生成结果</p>
         <pre class="stream-output">{{ output || '点击生成后，这里显示 mock 结果。' }}</pre>
       </section>
       <section>
-        <p class="eyebrow">extra</p>
+        <p class="eyebrow">摘要信息</p>
         <pre class="stream-output">{{ extra || '这里显示类型、数量、格式和首条样例摘要。' }}</pre>
       </section>
     </div>

@@ -163,7 +163,7 @@ async function copyOutput(): Promise<void> {
   <section class="tool-panel-shell">
     <div class="tool-panel-header">
       <div>
-        <p class="eyebrow">advanced panel</p>
+        <p class="eyebrow">高级面板</p>
         <h3>对称加密（AES / DES）</h3>
       </div>
       <NTag size="small" :bordered="false">ECB / PKCS7</NTag>
@@ -230,11 +230,11 @@ async function copyOutput(): Promise<void> {
 
     <div class="tool-output-grid">
       <section>
-        <p class="eyebrow">result</p>
+        <p class="eyebrow">处理结果</p>
         <pre class="stream-output">{{ output || '等待执行结果...' }}</pre>
       </section>
       <section>
-        <p class="eyebrow">extra</p>
+        <p class="eyebrow">运行摘要</p>
         <pre class="stream-output">{{
           extra || '这里显示模式、算法、格式、字节数和 key 处理摘要。'
         }}</pre>

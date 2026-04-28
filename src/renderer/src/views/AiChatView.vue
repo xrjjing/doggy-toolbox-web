@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCollapseTransition,
@@ -31,6 +31,7 @@ const aiSettingsStore = useAiSettingsStore()
 const showSettingsModal = ref(false)
 const reasoningDepth = ref(70)
 const expandedThinkingIds = ref<Set<string>>(new Set())
+const chatAreaRef = ref<HTMLElement | null>(null)
 
 const providerLabel = computed(() =>
   aiStore.provider === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
@@ -126,6 +127,13 @@ function openSettingsModal(): void {
   showSettingsModal.value = true
 }
 
+async function scrollChatToBottom(): Promise<void> {
+  await nextTick()
+  const chatArea = chatAreaRef.value
+  if (!chatArea) return
+  chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: 'auto' })
+}
+
 onMounted(async () => {
   if (!aiSettingsStore.hasLoaded) {
     await aiSettingsStore.load()
@@ -134,23 +142,31 @@ onMounted(async () => {
   if (aiStore.sessions[0]) {
     await aiStore.loadSession(aiStore.sessions[0].id)
   }
+  await scrollChatToBottom()
 })
 
 onBeforeUnmount(() => {
   aiStore.disposeStream()
 })
+
+watch(
+  () => [visibleMessages.value.length, aiStore.output, aiStore.thinking],
+  () => {
+    void scrollChatToBottom()
+  }
+)
 </script>
 
 <template>
-  <div class="ai-workspace">
+  <div class="ai-workspace ai-workspace--zen">
     <section class="ai-toolbar-shell">
       <div class="ai-toolbar">
         <div class="ai-toolbar-left">
           <div class="ai-model-selector">
-            <span class="ai-model-glyph">AI</span>
+            <span class="ai-model-glyph">{{ aiStore.provider === 'codex' ? 'C' : 'CC' }}</span>
             <div>
               <strong>{{ providerLabel }}</strong>
-              <p>本机 SDK 工作台</p>
+              <p>Local SDK · Neural Core</p>
             </div>
           </div>
 
@@ -161,8 +177,17 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="ai-toolbar-actions">
+          <div class="ai-inline-meta">
+            <span>{{
+              aiStore.runtime?.workingDirectory ||
+              aiSettingsStore.settings.workingDirectory ||
+              '跟随当前项目'
+            }}</span>
+            <span>{{ aiStore.runtime?.model || '本机配置' }}</span>
+            <span>{{ aiStore.activeSession?.status || '尚未开始' }}</span>
+          </div>
           <div class="ai-depth-control">
-            <span class="eyebrow">depth</span>
+            <span class="eyebrow">logic depth</span>
             <NSlider v-model:value="reasoningDepth" :step="5" :min="0" :max="100" />
           </div>
           <div class="ai-toolbar-status">
@@ -178,22 +203,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="ai-meta-ribbon">
-        <div class="ai-meta-chip">
-          <span>工作目录</span>
-          <strong>{{
-            aiStore.runtime?.workingDirectory || aiSettingsStore.settings.workingDirectory || '跟随当前项目'
-          }}</strong>
-        </div>
-        <div class="ai-meta-chip">
-          <span>模型</span>
-          <strong>{{ aiStore.runtime?.model || '跟随本机配置' }}</strong>
-        </div>
-        <div class="ai-meta-chip">
-          <span>会话状态</span>
-          <strong>{{ aiStore.activeSession?.status || '尚未开始' }}</strong>
-        </div>
-      </div>
+      <div class="ai-meta-ribbon" aria-hidden="true" />
     </section>
 
     <div class="ai-chat-shell">
@@ -226,10 +236,13 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="ai-chat-headline">
-          <strong>空间</strong>
+          <div>
+            <p class="eyebrow">conversation</p>
+            <strong>AI 灵感空间</strong>
+          </div>
           <NTag size="small" :bordered="false">{{ visibleMessages.length }} 条</NTag>
         </div>
-        <div v-if="visibleMessages.length > 0" class="chat-area">
+        <div v-if="visibleMessages.length > 0" ref="chatAreaRef" class="chat-area">
           <article
             v-for="item in visibleMessages"
             :key="item.id"
@@ -299,7 +312,6 @@ onBeforeUnmount(() => {
     preset="card"
     title="AI 设置"
     class="ai-settings-modal"
-    :style="{ width: 'min(760px, calc(100vw - 120px))' }"
   >
     <AiSettingsView />
   </NModal>

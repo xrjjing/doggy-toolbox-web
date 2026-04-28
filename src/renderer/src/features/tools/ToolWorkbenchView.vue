@@ -520,7 +520,7 @@ watch(activeCategory, (category) => {
       <template #header>
         <div class="card-title-row">
           <div>
-            <p class="eyebrow">tool rails</p>
+            <p class="eyebrow">toolbox</p>
             <strong>工具分类</strong>
           </div>
           <NTag size="small" :bordered="false">{{ groupedTools.length }} 组</NTag>
@@ -608,11 +608,11 @@ watch(activeCategory, (category) => {
 
               <div class="tool-output-grid">
                 <section>
-                  <p class="eyebrow">result</p>
+                  <p class="eyebrow">结果</p>
                   <pre class="stream-output">{{ output || '等待运行结果...' }}</pre>
                 </section>
                 <section>
-                  <p class="eyebrow">extra</p>
+                  <p class="eyebrow">附加信息</p>
                   <pre class="stream-output">{{ extra || '这里显示校验、预览或反向结果...' }}</pre>
                 </section>
               </div>
@@ -660,7 +660,7 @@ watch(activeCategory, (category) => {
         <template #header>
           <div class="card-title-row">
             <div>
-              <p class="eyebrow">local ai assist</p>
+              <p class="eyebrow">local sdk</p>
               <h3>AI 结果复核</h3>
             </div>
             <NTag size="small" :bordered="false">页内复核</NTag>
@@ -669,7 +669,7 @@ watch(activeCategory, (category) => {
 
         <section class="tool-ai-assist">
           <p class="muted">
-            把当前工具名、输入、result 和 extra 组织成 prompt，交给本机 Codex / Claude Code SDK
+            把当前工具名、输入、结果和附加信息组织成 prompt，交给本机 Codex / Claude Code SDK
             做结果解释、异常判断和下一步建议。
           </p>
 
