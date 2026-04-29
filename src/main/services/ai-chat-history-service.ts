@@ -221,6 +221,25 @@ export class AiChatHistoryService {
     return state.sessions.find((session) => session.id === normalizedId) ?? null
   }
 
+  async deleteSession(sessionId: string): Promise<boolean> {
+    const normalizedId = sanitizeText(sessionId)
+    if (!normalizedId) return false
+    let removed = false
+    const timestamp = nowIso()
+
+    await this.updateState((state) => {
+      const sessions = state.sessions.filter((session) => session.id !== normalizedId)
+      removed = sessions.length !== state.sessions.length
+      return {
+        ...state,
+        updatedAt: removed ? timestamp : state.updatedAt,
+        sessions
+      }
+    })
+
+    return removed
+  }
+
   async createSession(input: {
     id: string
     provider: AiProviderKind

@@ -290,6 +290,9 @@ function registerIpc(): void {
   ipcMain.handle('ai:get-session', (_event, sessionId: string) =>
     aiChatHistoryService.getSession(sessionId)
   )
+  ipcMain.handle('ai:delete-session', (_event, sessionId: string) =>
+    aiChatHistoryService.deleteSession(sessionId)
+  )
   ipcMain.handle('ai:get-settings-state', () => aiSettingsService.getState())
   ipcMain.handle('ai:save-settings', (_event, input: AiSettingsSaveInput) =>
     aiSettingsService.saveSettings(input)

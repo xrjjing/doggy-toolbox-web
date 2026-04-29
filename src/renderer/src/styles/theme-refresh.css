@@ -5316,6 +5316,46 @@ html[data-theme='dark'] .inline-ai-review-card {
   padding-inline: 12px !important;
 }
 
+.http-ai-control-strip {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 12px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 68%, transparent) !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 48%),
+    color-mix(in srgb, var(--field-surface) 70%, transparent) !important;
+  box-shadow: var(--zen-card-highlight) !important;
+  backdrop-filter: var(--zen-glass-blur) saturate(1.05) !important;
+  -webkit-backdrop-filter: var(--zen-glass-blur) saturate(1.05) !important;
+}
+
+.http-ai-control-strip strong,
+.http-ai-control-strip p {
+  display: block;
+  margin: 0;
+}
+
+.http-ai-control-strip p {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.http-ai-control-actions {
+  display: grid !important;
+  grid-template-columns: minmax(150px, 190px) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.http-ai-control-actions .n-base-selection,
+.http-ai-control-actions .n-button {
+  height: 34px !important;
+}
+
 .http-lab-request-grid {
   grid-template-columns: minmax(0, 1fr) !important;
   align-items: stretch !important;
@@ -5443,7 +5483,9 @@ html[data-theme='dark'] .inline-ai-review-card {
   }
 
   .http-toolbar-filters,
-  .http-editor-topline {
+  .http-editor-topline,
+  .http-ai-control-strip,
+  .http-ai-control-actions {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
@@ -7421,7 +7463,7 @@ body {
 
 .ai-workspace--zen .ai-session-item {
   width: 100%;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
   gap: 9px;
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
@@ -7430,6 +7472,21 @@ body {
   background: color-mix(in srgb, var(--field-surface) 68%, transparent);
   text-align: left;
   cursor: pointer;
+}
+
+.ai-workspace--zen .ai-session-delete-button {
+  align-self: start;
+  opacity: 0;
+  color: var(--danger) !important;
+  transition:
+    opacity 0.16s ease,
+    background 0.16s ease !important;
+}
+
+.ai-workspace--zen .ai-session-item:hover .ai-session-delete-button,
+.ai-workspace--zen .ai-session-item:focus-within .ai-session-delete-button,
+.ai-workspace--zen .ai-session-item.active .ai-session-delete-button {
+  opacity: 1;
 }
 
 .ai-workspace--zen .ai-session-item.active {
@@ -8722,7 +8779,8 @@ html[data-theme='dark'] .credentials-detail-surface .secret-mask--detail {
 }
 
 .credentials-vault {
-  grid-template-columns: minmax(260px, 0.72fr) minmax(360px, 1fr) !important;
+  grid-template-columns: minmax(260px, 0.92fr) minmax(360px, 1fr) !important;
+  align-items: start !important;
   gap: 14px !important;
 }
 
@@ -8784,8 +8842,10 @@ html[data-theme='dark'] .credentials-detail-surface .secret-mask--detail {
 
 .credentials-detail-surface {
   min-height: 0 !important;
-  padding: calc(16px * var(--zen-density)) !important;
-  gap: 12px !important;
+  align-self: start !important;
+  padding: calc(14px * var(--zen-density)) !important;
+  gap: 10px !important;
+  align-content: start !important;
 }
 
 .credentials-detail-head {
@@ -8809,8 +8869,8 @@ html[data-theme='dark'] .credentials-detail-surface .secret-mask--detail {
 }
 
 .credential-fields > div {
-  min-height: 74px !important;
-  padding: 12px !important;
+  min-height: 58px !important;
+  padding: 10px 12px !important;
 }
 
 .credential-fields strong {
@@ -8818,19 +8878,40 @@ html[data-theme='dark'] .credentials-detail-surface .secret-mask--detail {
   overflow-wrap: anywhere;
 }
 
+.credential-fields--compact {
+  align-items: start !important;
+}
+
+.credential-secret-row {
+  display: grid !important;
+  grid-template-columns: minmax(38px, auto) minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.credential-secret-row .n-text {
+  white-space: nowrap !important;
+}
+
 .credentials-detail-surface .secret-mask--detail {
-  display: block;
+  display: inline-flex !important;
+  align-items: center !important;
   max-width: 100%;
-  min-height: 32px !important;
-  padding: 8px 10px !important;
-  overflow: auto;
-  white-space: pre-wrap;
+  min-height: 26px !important;
+  padding: 4px 8px !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
 }
 
 .credential-extra {
   max-height: 150px !important;
   padding: 10px !important;
   overflow: auto !important;
+}
+
+.credentials-detail-surface .action-row {
+  margin-top: 0 !important;
 }
 
 .credential-extra:empty,
@@ -9086,15 +9167,49 @@ html[data-theme='dark'] .credentials-detail-surface .secret-mask--detail {
   flex-wrap: wrap !important;
 }
 
+.prompt-editor-surface {
+  align-self: start !important;
+  align-content: start !important;
+  gap: 10px !important;
+  padding: 18px !important;
+}
+
+.prompt-editor-head {
+  margin-bottom: 0 !important;
+}
+
 .prompt-chip-list--compact {
-  margin-top: -4px !important;
+  margin-top: -6px !important;
+  margin-bottom: -2px !important;
   gap: 6px !important;
+  min-height: 0 !important;
+  align-items: center !important;
+  align-content: flex-start !important;
 }
 
 .prompt-chip-list--compact .chip {
+  width: auto !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
   min-height: 22px !important;
-  padding: 3px 8px !important;
+  height: 22px !important;
+  padding: 0 9px !important;
   font-size: 0.72rem !important;
+  line-height: 22px !important;
+  white-space: nowrap !important;
+  writing-mode: horizontal-tb !important;
+}
+
+.prompt-chip-list--flat {
+  display: flex !important;
+  flex-flow: row wrap !important;
+  justify-content: flex-start !important;
+}
+
+.prompt-chip-list--flat .chip {
+  flex: 0 1 auto !important;
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed !important;
 }
 
 .prompt-editor-surface .action-row .n-button--error-type,

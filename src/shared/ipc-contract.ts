@@ -820,6 +820,7 @@ export type BridgeApi = {
   applyAppearance: (appearance: AppAppearance) => Promise<{ ok: boolean }>
   getAiChatHistoryState: () => Promise<AiChatHistoryState>
   getAiChatSession: (sessionId: string) => Promise<AiChatSessionRecord | null>
+  deleteAiChatSession: (sessionId: string) => Promise<boolean>
   getAiSettingsState: () => Promise<AiSettingsState>
   saveAiSettings: (input: AiSettingsSaveInput) => Promise<AiSettingsState>
   getAiSdkRuntimeState: () => Promise<AiSdkRuntimeState>

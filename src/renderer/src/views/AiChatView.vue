@@ -9,6 +9,7 @@ import {
   NIcon,
   NInput,
   NModal,
+  NPopconfirm,
   NSelect,
   NSlider,
   NRadioButton,
@@ -21,6 +22,7 @@ import {
   ChatboxOutline,
   ChevronDownOutline,
   ChevronUpOutline,
+  TrashOutline,
   ImageOutline,
   LibraryOutline,
   SettingsOutline,
@@ -132,6 +134,15 @@ async function selectSession(sessionId: string): Promise<void> {
   await aiStore.loadSession(sessionId)
   expandedThinkingIds.value = new Set()
   await scrollChatToBottom()
+}
+
+async function deleteSession(sessionId: string): Promise<void> {
+  try {
+    const ok = await aiStore.deleteSession(sessionId)
+    message[ok ? 'success' : 'warning'](ok ? '会话记录已删除' : '未找到会话记录')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
 }
 
 async function startChat(): Promise<void> {
@@ -323,12 +334,11 @@ watch(selectedTemplate, (template) => {
         </div>
 
         <div v-if="aiStore.sessions.length > 0" class="ai-session-list">
-          <button
+          <div
             v-for="session in aiStore.sessions"
             :key="session.id"
             class="ai-session-item"
             :class="{ active: session.id === aiStore.activeSessionId }"
-            type="button"
             @click="selectSession(session.id)"
           >
             <NIcon :component="ChatboxOutline" />
@@ -337,7 +347,30 @@ watch(selectedTemplate, (template) => {
               <p>{{ session.preview || session.phase }}</p>
               <span>{{ formatUpdatedAt(session.updatedAt) }}</span>
             </div>
-          </button>
+            <NPopconfirm
+              negative-text="取消"
+              positive-text="确认删除"
+              @positive-click="deleteSession(session.id)"
+            >
+              <template #trigger>
+                <NButton
+                  class="ai-session-delete-button"
+                  size="tiny"
+                  circle
+                  tertiary
+                  type="error"
+                  title="删除会话"
+                  :disabled="aiStore.running && session.id === aiStore.activeSessionId"
+                  @click.stop
+                >
+                  <template #icon>
+                    <NIcon :component="TrashOutline" />
+                  </template>
+                </NButton>
+              </template>
+              删除后会从本地 AI 会话历史中移除，确定继续？
+            </NPopconfirm>
+          </div>
         </div>
         <div v-else class="ai-session-empty">
           <NEmpty description="暂无会话记录" />
@@ -416,7 +449,7 @@ watch(selectedTemplate, (template) => {
               type="textarea"
               class="ai-chat-input"
               :autosize="{ minRows: 1, maxRows: 4 }"
-              placeholder="描述你的开发难题，或让它解释当前项目状态..."
+              placeholder=""
               @update:value="aiStore.setPrompt"
             />
             <div class="floating-input-actions">

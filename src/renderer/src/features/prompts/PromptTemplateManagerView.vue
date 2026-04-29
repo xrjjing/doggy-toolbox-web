@@ -635,7 +635,10 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="activeTemplate.tags.length > 0 || activeTemplate.isSystem" class="chip-list prompt-chip-list--compact">
+          <div
+            v-if="activeTemplate.tags.length > 0 || activeTemplate.isSystem"
+            class="chip-list prompt-chip-list--compact prompt-chip-list--flat"
+          >
             <span v-for="tag in activeTemplate.tags" :key="tag" class="chip">{{ tag }}</span>
             <span v-if="activeTemplate.isSystem" class="chip">系统模板</span>
           </div>

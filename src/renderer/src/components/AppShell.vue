@@ -50,7 +50,7 @@ const message = useMessage()
 const showAppearanceModal = ref(false)
 const appearanceModalOrigin = ref<AppAppearance>(cloneAppearance(appStore.appearance))
 const appearanceSavedAt = ref<string | null>(null)
-const isSidebarCollapsed = ref(false)
+const isSidebarCollapsed = ref(true)
 const mainPanelRef = ref<HTMLElement | null>(null)
 const mainViewShellRef = ref<HTMLElement | null>(null)
 

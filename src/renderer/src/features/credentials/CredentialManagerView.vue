@@ -292,18 +292,24 @@ onMounted(() => {
             <span class="vault-index-pill">#{{ activeCredential.order + 1 }}</span>
           </div>
 
-          <div class="credential-fields">
-            <div>
+          <div class="credential-fields credential-fields--compact">
+            <div class="credential-secret-row">
               <NText depth="3">账号</NText>
               <strong>{{ activeCredential.account || '未填写' }}</strong>
+              <NButton size="tiny" secondary @click="copyText(activeCredential.account, '账号')">
+                复制
+              </NButton>
             </div>
-            <div>
+            <div class="credential-secret-row">
               <NText depth="3">密码</NText>
               <strong class="secret-mask secret-mask--detail">{{
                 isRevealed(activeCredential.id)
                   ? activeCredential.password || '未填写'
                   : maskPassword(activeCredential.password)
               }}</strong>
+              <NButton size="tiny" secondary @click="copyText(activeCredential.password, '密码')">
+                复制
+              </NButton>
             </div>
           </div>
 
@@ -316,12 +322,6 @@ onMounted(() => {
           </div>
 
           <div class="action-row">
-            <NButton size="small" secondary @click="copyText(activeCredential.account, '账号')">
-              复制账号
-            </NButton>
-            <NButton size="small" secondary @click="copyText(activeCredential.password, '密码')">
-              复制密码
-            </NButton>
             <NButton size="small" secondary @click="toggleReveal(activeCredential.id)">
               {{ isRevealed(activeCredential.id) ? '隐藏' : '显示' }}
             </NButton>

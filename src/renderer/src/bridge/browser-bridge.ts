@@ -791,6 +791,13 @@ export function installBrowserBridge(): void {
     async getAiChatSession(sessionId: string) {
       return cloneJson(state.aiSessions[sanitizeText(sessionId)] ?? null)
     },
+    async deleteAiChatSession(sessionId: string) {
+      const normalizedId = sanitizeText(sessionId)
+      if (!normalizedId || !state.aiSessions[normalizedId]) return false
+      delete state.aiSessions[normalizedId]
+      saveAll()
+      return true
+    },
     async getAiSettingsState() {
       return cloneJson(state.aiSettings)
     },

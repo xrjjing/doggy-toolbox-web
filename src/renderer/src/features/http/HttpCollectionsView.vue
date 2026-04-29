@@ -891,6 +891,23 @@ onMounted(async () => {
                 @update:value="httpStore.setSelectedEnvironment"
               />
               <NButton secondary @click="openCreateEnvironmentModal">管理环境</NButton>
+            </div>
+
+            <div class="http-toolbar-actions">
+              <NButton secondary :loading="httpStore.loading" @click="httpStore.load">刷新</NButton>
+              <NButton secondary @click="openCreateRequestModal">新建草稿</NButton>
+              <NButton secondary @click="curlImportModalVisible = true">导入 cURL</NButton>
+              <NButton secondary @click="collectionImportModalVisible = true">导入集合</NButton>
+            </div>
+          </div>
+
+          <div class="http-ai-control-strip">
+            <div>
+              <span class="eyebrow">AI review</span>
+              <strong>请求分析</strong>
+              <p>只分析当前请求与最近响应，不参与 HTTP 发送配置。</p>
+            </div>
+            <div class="http-ai-control-actions">
               <NSelect
                 v-model:value="aiProvider"
                 :options="[
@@ -899,13 +916,6 @@ onMounted(async () => {
                 ]"
                 class="tool-select"
               />
-            </div>
-
-            <div class="http-toolbar-actions">
-              <NButton secondary :loading="httpStore.loading" @click="httpStore.load">刷新</NButton>
-              <NButton secondary @click="openCreateRequestModal">新建草稿</NButton>
-              <NButton secondary @click="curlImportModalVisible = true">导入 cURL</NButton>
-              <NButton secondary @click="collectionImportModalVisible = true">导入集合</NButton>
               <NButton
                 secondary
                 :disabled="!aiSettingsStore.isFeatureEnabled('http') || !httpStore.activeRequest"

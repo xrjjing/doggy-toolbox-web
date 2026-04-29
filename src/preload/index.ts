@@ -54,6 +54,7 @@ const api: BridgeApi = {
     ipcRenderer.invoke('ai:get-history-state'),
   getAiChatSession: (sessionId: string): Promise<AiChatSessionRecord | null> =>
     ipcRenderer.invoke('ai:get-session', sessionId),
+  deleteAiChatSession: (sessionId: string) => ipcRenderer.invoke('ai:delete-session', sessionId),
   getAiSettingsState: (): Promise<AiSettingsState> => ipcRenderer.invoke('ai:get-settings-state'),
   saveAiSettings: (input: AiSettingsSaveInput): Promise<AiSettingsState> =>
     ipcRenderer.invoke('ai:save-settings', input),

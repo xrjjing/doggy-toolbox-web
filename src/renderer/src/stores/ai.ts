@@ -31,7 +31,7 @@ export const useAiStore = defineStore('ai', () => {
   const historyState = ref<AiChatHistoryState | null>(null)
   const activeSession = ref<AiChatSessionRecord | null>(null)
   const provider = ref<AiProviderKind>('codex')
-  const prompt = ref('请用三句话说明 doggy-toolbox-web 当前迁移状态。')
+  const prompt = ref('')
   const running = ref(false)
   let unsubscribe: (() => void) | null = null
 
@@ -168,6 +168,19 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   /**
+   * 删除历史会话后立刻刷新列表。
+   * 如果删的是当前激活会话，renderer 也同步清空画布，避免继续展示已不存在的快照。
+   */
+  async function deleteSession(sessionId: string): Promise<boolean> {
+    const ok = await window.doggy.deleteAiChatSession(sessionId)
+    if (ok && activeSessionId.value === sessionId) {
+      clearActiveSession()
+    }
+    await loadHistory()
+    return ok
+  }
+
+  /**
    * 发起一次新的 AI 会话。
    * 调用链是：renderer 组装 prompt -> preload IPC -> main bridge 启动 -> stream 事件实时回传 ->
    * done/error 后再次 loadSession/loadHistory 拿最终快照。
@@ -257,6 +270,7 @@ export const useAiStore = defineStore('ai', () => {
     usage,
     loadHistory,
     loadSession,
+    deleteSession,
     startChat,
     cancelChat,
     setPrompt,
