@@ -68,6 +68,7 @@ const stats = computed(() => ({
 }))
 const isEdit = computed(() => Boolean(form.id))
 const activeCredentialId = ref('')
+const draggingCredentialId = ref('')
 const activeCredential = computed(
   () =>
     credentialsStore.visibleCredentials.find((credential) => credential.id === activeCredentialId.value) ??
@@ -167,14 +168,25 @@ async function submitCredential(): Promise<void> {
   }
 }
 
-function rotateCredentialOrder(direction: 'up' | 'down', credentialId: string): void {
+function startCredentialDrag(credentialId: string): void {
+  draggingCredentialId.value = credentialId
+}
+
+function finishCredentialDrag(): void {
+  draggingCredentialId.value = ''
+}
+
+function dropCredential(targetCredential: CredentialRecord): void {
+  const sourceCredentialId = draggingCredentialId.value
+  if (!sourceCredentialId || sourceCredentialId === targetCredential.id) return
+
   const credentials = [...credentialsStore.credentials]
-  const currentIndex = credentials.findIndex((item) => item.id === credentialId)
-  if (currentIndex < 0) return
-  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-  if (targetIndex < 0 || targetIndex >= credentials.length) return
-  const [current] = credentials.splice(currentIndex, 1)
-  credentials.splice(targetIndex, 0, current)
+  const sourceIndex = credentials.findIndex((item) => item.id === sourceCredentialId)
+  const targetIndex = credentials.findIndex((item) => item.id === targetCredential.id)
+  if (sourceIndex < 0 || targetIndex < 0) return
+
+  const [source] = credentials.splice(sourceIndex, 1)
+  credentials.splice(targetIndex, 0, source)
   void credentialsStore.reorderCredentials(credentials.map((item) => item.id))
 }
 
@@ -244,11 +256,20 @@ onMounted(() => {
             v-for="credential in credentialsStore.visibleCredentials"
             :key="credential.id"
             class="vault-row"
-            :class="{ active: activeCredential?.id === credential.id }"
+            :class="{
+              active: activeCredential?.id === credential.id,
+              dragging: draggingCredentialId === credential.id
+            }"
             type="button"
+            draggable="true"
+            @dragstart="startCredentialDrag(credential.id)"
+            @dragover.prevent
+            @drop.prevent="dropCredential(credential)"
+            @dragend="finishCredentialDrag"
             @click="activeCredentialId = credential.id"
           >
             <div class="vault-row-main">
+              <span class="drag-handle credential-drag-handle" aria-hidden="true">⋮⋮</span>
               <div class="vault-row-icon">{{ credential.service.slice(0, 1).toUpperCase() }}</div>
               <div>
                 <strong>{{ credential.service }}</strong>
@@ -301,25 +322,6 @@ onMounted(() => {
             <NButton size="small" secondary @click="copyText(activeCredential.password, '密码')">
               复制密码
             </NButton>
-            <NButton
-              size="small"
-              quaternary
-              :disabled="credentialsStore.credentials[0]?.id === activeCredential.id"
-              @click="rotateCredentialOrder('up', activeCredential.id)"
-            >
-              上移
-            </NButton>
-            <NButton
-              size="small"
-              quaternary
-              :disabled="
-                credentialsStore.credentials[credentialsStore.credentials.length - 1]?.id ===
-                activeCredential.id
-              "
-              @click="rotateCredentialOrder('down', activeCredential.id)"
-            >
-              下移
-            </NButton>
             <NButton size="small" secondary @click="toggleReveal(activeCredential.id)">
               {{ isRevealed(activeCredential.id) ? '隐藏' : '显示' }}
             </NButton>
@@ -347,11 +349,11 @@ onMounted(() => {
       </NCard>
     </div>
 
-    <NCard class="soft-card credentials-meta-card" :bordered="false">
-      <template #header>本地文件</template>
-      <p class="muted">{{ credentialsStore.storageFile || '等待初始化' }}</p>
-      <p class="muted">最近更新：{{ formatUpdatedAt(credentialsStore.updatedAt) }}</p>
-    </NCard>
+    <aside class="credentials-meta-card credentials-meta-card--compact">
+      <span>SQLite DB</span>
+      <p>凭证已保存到当前项目数据库</p>
+      <small>最近更新：{{ formatUpdatedAt(credentialsStore.updatedAt) }}</small>
+    </aside>
   </div>
 
   <NModal
@@ -360,7 +362,7 @@ onMounted(() => {
     :title="isEdit ? '编辑凭证' : '新增凭证'"
     class="form-modal command-form-modal"
   >
-    <NForm>
+    <NForm class="credential-form-grid">
       <!-- 表单中的多行附加信息只是输入形态，提交后会被转换为合约里的字符串数组。 -->
       <NFormItem label="服务名称">
         <NInput

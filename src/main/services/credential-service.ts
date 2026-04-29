@@ -7,7 +7,7 @@ import type {
   CredentialSaveInput
 } from '../../shared/ipc-contract'
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
-import { JsonFileRepository } from './json-repository'
+import { SqliteDocumentRepository } from './sqlite-document-repository'
 
 type PasswordEncoding = CredentialModuleState['secretEncoding']
 
@@ -190,7 +190,9 @@ export class CredentialService {
     private readonly secretCodec: CredentialSecretCodec = plainCredentialSecretCodec
   ) {
     this.paths = resolveAppDataPaths(rootDir)
-    this.repository = new JsonFileRepository<StoredCredentialState>(
+    this.repository = new SqliteDocumentRepository<StoredCredentialState>(
+      this.paths.files.database,
+      'credentials',
       this.paths.files.credentials,
       () => createDefaultState(this.secretCodec.encoding)
     )
@@ -521,7 +523,7 @@ export class CredentialService {
 
   private toModuleState(state: StoredCredentialState): CredentialModuleState {
     return {
-      storageFile: this.paths.files.credentials,
+      storageFile: this.paths.files.database,
       updatedAt: state.updatedAt,
       secretEncoding: this.secretCodec.encoding,
       credentials: this.toPlainRecords(state)

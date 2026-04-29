@@ -11,7 +11,7 @@ import type {
   CommandTabSaveInput
 } from '../../shared/ipc-contract'
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
-import { JsonFileRepository } from './json-repository'
+import { SqliteDocumentRepository } from './sqlite-document-repository'
 
 type StoredCommandState = {
   version: number
@@ -196,7 +196,7 @@ function parseImportedBlocks(text: string): Array<{
 
 /**
  * 命令模块的主进程持久化服务。
- * renderer 不直接编辑 JSON，而是通过这里统一做输入清洗、默认分组兜底和排序。
+ * renderer 不直接编辑本地 DB，而是通过这里统一做输入清洗、默认分组兜底和排序。
  */
 export class CommandService {
   private readonly paths
@@ -204,7 +204,9 @@ export class CommandService {
 
   constructor(rootDir: string) {
     this.paths = resolveAppDataPaths(rootDir)
-    this.repository = new JsonFileRepository<StoredCommandState>(
+    this.repository = new SqliteDocumentRepository<StoredCommandState>(
+      this.paths.files.database,
+      'commands',
       this.paths.files.commands,
       createDefaultState
     )
@@ -568,7 +570,7 @@ export class CommandService {
 
   private toModuleState(state: StoredCommandState): CommandModuleState {
     return {
-      storageFile: this.paths.files.commands,
+      storageFile: this.paths.files.database,
       defaultTabId: DEFAULT_TAB_ID,
       updatedAt: state.updatedAt,
       tabs: [...state.tabs].sort((left, right) => left.order - right.order),

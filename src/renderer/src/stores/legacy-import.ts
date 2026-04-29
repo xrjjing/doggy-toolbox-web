@@ -4,7 +4,9 @@ import type {
   BackupSectionKey,
   LegacyImportAnalysis,
   LegacyImportInput,
-  LegacyImportResult
+  LegacyImportResult,
+  LegacySqliteImportAnalysis,
+  LegacySqliteImportInput
 } from '@shared/ipc-contract'
 
 /**
@@ -15,15 +17,18 @@ import type {
 
 export const useLegacyImportStore = defineStore('legacy-import', () => {
   const sourceJson = ref('')
+  const sqliteDbPath = ref('/Users/xrj/.dog_toolbox/doggy_toolbox.db')
   const analysis = ref<LegacyImportAnalysis | null>(null)
+  const sqliteAnalysis = ref<LegacySqliteImportAnalysis | null>(null)
   const importResult = ref<LegacyImportResult | null>(null)
   const selectedSections = ref<BackupSectionKey[]>([])
   const loading = ref(false)
-  const hasAnalysis = computed(() => Boolean(analysis.value))
+  const hasAnalysis = computed(() => Boolean(analysis.value ?? sqliteAnalysis.value))
   const hasImportResult = computed(() => Boolean(importResult.value))
-  const availableSections = computed(() => analysis.value?.availableSections ?? [])
+  const activeAnalysis = computed(() => sqliteAnalysis.value ?? analysis.value)
+  const availableSections = computed(() => activeAnalysis.value?.availableSections ?? [])
   const canImport = computed(
-    () => Boolean(analysis.value) && selectedSections.value.length > 0 && !loading.value
+    () => Boolean(activeAnalysis.value) && selectedSections.value.length > 0 && !loading.value
   )
 
   /**
@@ -35,6 +40,7 @@ export const useLegacyImportStore = defineStore('legacy-import', () => {
     try {
       const result = await window.doggy.analyzeLegacyImport(sourceJson.value)
       analysis.value = result
+      sqliteAnalysis.value = null
       selectedSections.value = [...result.availableSections]
       importResult.value = null
       return result
@@ -54,7 +60,42 @@ export const useLegacyImportStore = defineStore('legacy-import', () => {
         input ?? {
           json: sourceJson.value,
           sections:
-            selectedSections.value.length > 0 ? selectedSections.value : availableSections.value
+            selectedSections.value.length > 0
+              ? [...selectedSections.value]
+              : [...availableSections.value]
+        }
+      )
+      importResult.value = result
+      return result
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function analyzeSqlite(): Promise<LegacySqliteImportAnalysis> {
+    loading.value = true
+    try {
+      const result = await window.doggy.analyzeLegacySqliteImport(sqliteDbPath.value)
+      sqliteAnalysis.value = result
+      analysis.value = null
+      selectedSections.value = [...result.availableSections]
+      importResult.value = null
+      return result
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function importSqlite(input?: LegacySqliteImportInput): Promise<LegacyImportResult> {
+    loading.value = true
+    try {
+      const result = await window.doggy.importLegacySqliteData(
+        input ?? {
+          dbPath: sqliteDbPath.value,
+          sections:
+            selectedSections.value.length > 0
+              ? [...selectedSections.value]
+              : [...availableSections.value]
         }
       )
       importResult.value = result
@@ -70,6 +111,15 @@ export const useLegacyImportStore = defineStore('legacy-import', () => {
   function setSourceJson(value: string): void {
     sourceJson.value = value
     analysis.value = null
+    sqliteAnalysis.value = null
+    importResult.value = null
+    selectedSections.value = []
+  }
+
+  function setSqliteDbPath(value: string): void {
+    sqliteDbPath.value = value
+    analysis.value = null
+    sqliteAnalysis.value = null
     importResult.value = null
     selectedSections.value = []
   }
@@ -83,7 +133,10 @@ export const useLegacyImportStore = defineStore('legacy-import', () => {
 
   return {
     sourceJson,
+    sqliteDbPath,
     analysis,
+    sqliteAnalysis,
+    activeAnalysis,
     importResult,
     selectedSections,
     loading,
@@ -93,7 +146,10 @@ export const useLegacyImportStore = defineStore('legacy-import', () => {
     canImport,
     analyze,
     importData,
+    analyzeSqlite,
+    importSqlite,
     setSourceJson,
+    setSqliteDbPath,
     setSections
   }
 })

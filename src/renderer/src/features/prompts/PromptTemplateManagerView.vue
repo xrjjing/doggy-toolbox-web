@@ -16,6 +16,7 @@ import {
   NText,
   useMessage
 } from 'naive-ui'
+import { CreateOutline, PencilOutline } from '@vicons/ionicons5'
 import type {
   AiProviderKind,
   AiSessionPhase,
@@ -33,7 +34,7 @@ import { usePromptsStore } from '@renderer/stores/prompts'
  *
  * 真实链路：
  * UI -> promptsStore -> window.doggy(preload)
- * -> ipcMain.handle('prompts:*') -> PromptService -> JsonFileRepository
+ * -> ipcMain.handle('prompts:*') -> PromptService -> SQLite app_documents
  *
  * 变量解析/填充放在主进程 service 的目的，是让 Prompt 语法规则只有一份实现，
  * 后续聊天页、导入流程和模板库都能复用同一套逻辑，避免 renderer/main 双实现漂移。
@@ -98,13 +99,14 @@ const categoryOptions = computed(() => [
     value: category.id
   }))
 ])
-const variableSyntaxHint = '变量语法：{{name}}、{{name:默认值}}、{{name|选项1|选项2}}'
 const activeCategoryLabel = computed(() => promptsStore.activeCategory?.name ?? '全部模板')
 const currentVariables = computed(() => currentTemplate.value?.variables ?? [])
 const isTemplateEdit = computed(() => Boolean(templateForm.id))
 const isCategoryEdit = computed(() => Boolean(categoryForm.id))
 const activeTemplateId = ref('')
 const aiProvider = ref<AiProviderKind>('codex')
+const draggingCategoryId = ref('')
+const draggingTemplateId = ref('')
 const activeTemplate = computed(
   () =>
     promptsStore.visibleTemplates.find((template) => template.id === activeTemplateId.value) ??
@@ -143,26 +145,48 @@ function getCategoryName(categoryId: string): string {
   return promptsStore.categories.find((category) => category.id === categoryId)?.name ?? '未知分类'
 }
 
-function rotateCategoryOrder(direction: 'up' | 'down', categoryId: string): void {
+function startCategoryDrag(categoryId: string): void {
+  draggingCategoryId.value = categoryId
+}
+
+function finishCategoryDrag(): void {
+  draggingCategoryId.value = ''
+}
+
+function dropCategory(targetCategoryId: string): void {
+  const sourceCategoryId = draggingCategoryId.value
+  if (!sourceCategoryId || sourceCategoryId === targetCategoryId) return
+
   const categories = [...promptsStore.categories]
-  const currentIndex = categories.findIndex((item) => item.id === categoryId)
-  if (currentIndex < 0) return
-  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-  if (targetIndex < 0 || targetIndex >= categories.length) return
-  const [current] = categories.splice(currentIndex, 1)
-  categories.splice(targetIndex, 0, current)
+  const sourceIndex = categories.findIndex((item) => item.id === sourceCategoryId)
+  const targetIndex = categories.findIndex((item) => item.id === targetCategoryId)
+  if (sourceIndex < 0 || targetIndex < 0) return
+
+  const [source] = categories.splice(sourceIndex, 1)
+  categories.splice(targetIndex, 0, source)
   void promptsStore.reorderCategories(categories.map((item) => item.id))
 }
 
-function rotateTemplateOrder(direction: 'up' | 'down', template: PromptTemplate): void {
-  const categoryId = template.categoryId || ''
+function startTemplateDrag(templateId: string): void {
+  draggingTemplateId.value = templateId
+}
+
+function finishTemplateDrag(): void {
+  draggingTemplateId.value = ''
+}
+
+function dropTemplate(targetTemplate: PromptTemplate): void {
+  const sourceTemplateId = draggingTemplateId.value
+  if (!sourceTemplateId || sourceTemplateId === targetTemplate.id) return
+
+  const categoryId = targetTemplate.categoryId || ''
   const templates = promptsStore.templates.filter((item) => (item.categoryId || '') === categoryId)
-  const currentIndex = templates.findIndex((item) => item.id === template.id)
-  if (currentIndex < 0) return
-  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-  if (targetIndex < 0 || targetIndex >= templates.length) return
-  const [current] = templates.splice(currentIndex, 1)
-  templates.splice(targetIndex, 0, current)
+  const sourceIndex = templates.findIndex((item) => item.id === sourceTemplateId)
+  const targetIndex = templates.findIndex((item) => item.id === targetTemplate.id)
+  if (sourceIndex < 0 || targetIndex < 0) return
+
+  const [source] = templates.splice(sourceIndex, 1)
+  templates.splice(targetIndex, 0, source)
   void promptsStore.reorderTemplates({
     categoryId,
     templateIds: templates.map((item) => item.id)
@@ -468,8 +492,16 @@ onMounted(() => {
           v-for="category in promptsStore.categories"
           :key="category.id"
           class="tool-nav-item commands-tab-item"
-          :class="{ active: category.id === promptsStore.activeCategoryId }"
+          :class="{
+            active: category.id === promptsStore.activeCategoryId,
+            dragging: draggingCategoryId === category.id
+          }"
           type="button"
+          draggable="true"
+          @dragstart="startCategoryDrag(category.id)"
+          @dragover.prevent
+          @drop.prevent="dropCategory(category.id)"
+          @dragend="finishCategoryDrag"
           @click="promptsStore.setActiveCategory(category.id)"
         >
           <div>
@@ -477,38 +509,26 @@ onMounted(() => {
             <p>{{ promptsStore.countByCategory(category.id) }} 个模板</p>
           </div>
           <div class="list-order-actions">
+            <span class="drag-handle" aria-hidden="true">⋮⋮</span>
             <NButton
               size="tiny"
-              quaternary
               circle
-              :disabled="promptsStore.categories[0]?.id === category.id"
-              @click.stop="rotateCategoryOrder('up', category.id)"
+              secondary
+              class="icon-only-button"
+              title="编辑分类"
+              @click.stop="openEditCategoryModal(category.id)"
             >
-              ↑
+              <template #icon>
+                <PencilOutline />
+              </template>
             </NButton>
-            <NButton
-              size="tiny"
-              quaternary
-              circle
-              :disabled="
-                promptsStore.categories[promptsStore.categories.length - 1]?.id === category.id
-              "
-              @click.stop="rotateCategoryOrder('down', category.id)"
-            >
-              ↓
-            </NButton>
-            <NButton size="tiny" secondary @click.stop="openEditCategoryModal(category.id)"
-              >编辑分类</NButton
-            >
           </div>
         </button>
       </div>
 
-      <div class="commands-meta">
-        <strong>本地资料库</strong>
-        <NText depth="3">{{ promptsStore.storageFile || '等待初始化' }}</NText>
-        <strong>最近更新</strong>
-        <NText depth="3">{{ formatUpdatedAt(promptsStore.updatedAt) }}</NText>
+      <div class="commands-meta commands-meta--compact">
+        <strong>{{ formatUpdatedAt(promptsStore.updatedAt) }}</strong>
+        <NText depth="3">SQLite DB 已保存</NText>
       </div>
     </NCard>
 
@@ -578,12 +598,21 @@ onMounted(() => {
             v-for="template in promptsStore.visibleTemplates"
             :key="template.id"
             class="prompt-row-card"
-            :class="{ active: activeTemplate?.id === template.id }"
+            :class="{
+              active: activeTemplate?.id === template.id,
+              dragging: draggingTemplateId === template.id
+            }"
             type="button"
+            draggable="true"
+            @dragstart="startTemplateDrag(template.id)"
+            @dragover.prevent
+            @drop.prevent="dropTemplate(template)"
+            @dragend="finishTemplateDrag"
             @click="activeTemplateId = template.id"
           >
             <div class="prompt-row-main">
               <div class="prompt-row-top">
+                <span class="drag-handle prompt-drag-handle" aria-hidden="true">⋮⋮</span>
                 <strong>{{ template.title }}</strong>
                 <span v-if="template.isFavorite" class="prompt-favorite-dot" />
               </div>
@@ -606,7 +635,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="chip-list">
+          <div v-if="activeTemplate.tags.length > 0 || activeTemplate.isSystem" class="chip-list prompt-chip-list--compact">
             <span v-for="tag in activeTemplate.tags" :key="tag" class="chip">{{ tag }}</span>
             <span v-if="activeTemplate.isSystem" class="chip">系统模板</span>
           </div>
@@ -620,29 +649,15 @@ onMounted(() => {
             </NButton>
             <NButton
               size="small"
-              quaternary
-              :disabled="
-                promptsStore.templates.filter((item) => item.categoryId === activeTemplate.categoryId)[0]
-                  ?.id === activeTemplate.id
-              "
-              @click="rotateTemplateOrder('up', activeTemplate)"
+              secondary
+              class="icon-text-button"
+              @click="openEditTemplateModal(activeTemplate)"
             >
-              上移
+              <template #icon>
+                <CreateOutline />
+              </template>
+              编辑
             </NButton>
-            <NButton
-              size="small"
-              quaternary
-              :disabled="
-                promptsStore.templates.filter((item) => item.categoryId === activeTemplate.categoryId)[
-                  promptsStore.templates.filter((item) => item.categoryId === activeTemplate.categoryId)
-                    .length - 1
-                ]?.id === activeTemplate.id
-              "
-              @click="rotateTemplateOrder('down', activeTemplate)"
-            >
-              下移
-            </NButton>
-            <NButton size="small" secondary @click="openEditTemplateModal(activeTemplate)">编辑</NButton>
             <NPopconfirm
               negative-text="取消"
               positive-text="确认删除"
@@ -731,7 +746,6 @@ onMounted(() => {
               placeholder="逗号分隔，例如：代码, 优化"
             />
           </NFormItem>
-          <p class="muted prompt-hint">{{ variableSyntaxHint }}</p>
         </div>
         <NFormItem label="Prompt 内容">
           <NInput

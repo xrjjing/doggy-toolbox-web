@@ -19,6 +19,7 @@ import {
   CloudUploadOutline,
   DocumentTextOutline,
   ShieldCheckmarkOutline,
+  ServerOutline,
   SwapHorizontalOutline
 } from '@vicons/ionicons5'
 import type { BackupSectionKey } from '@shared/ipc-contract'
@@ -39,7 +40,8 @@ const backupProgress = computed(() =>
 
 const migrationCards = computed(() => {
   const backupSummary = backupStore.exportedDocument?.summary ?? backupStore.importResult?.summary
-  const legacySummary = legacyImportStore.importResult?.summary ?? legacyImportStore.analysis?.summary
+  const legacySummary =
+    legacyImportStore.importResult?.summary ?? legacyImportStore.sqliteAnalysis?.summary
   return [
     {
       label: '旧项目命令',
@@ -75,12 +77,12 @@ const summaryCards = computed(() => {
 })
 
 const legacySummaryCards = computed(() => {
-  const summary = legacyImportStore.importResult?.summary ?? legacyImportStore.analysis?.summary
+  const summary = legacyImportStore.importResult?.summary ?? legacyImportStore.sqliteAnalysis?.summary
   return [
     { label: '命令', value: summary?.commands ?? 0 },
     { label: '凭证', value: summary?.credentials ?? 0 },
-    { label: '分类', value: summary?.promptCategories ?? 0 },
-    { label: '模板', value: summary?.promptTemplates ?? 0 }
+    { label: 'Prompt', value: summary?.promptTemplates ?? 0 },
+    { label: 'HTTP 集合', value: summary?.httpCollections ?? 0 }
   ]
 })
 
@@ -113,23 +115,23 @@ function updateLegacySections(value: Array<string | number>): void {
   )
 }
 
-async function analyzeSource(): Promise<void> {
-  if (!legacyImportStore.sourceJson.trim()) {
-    message.warning('请先粘贴旧项目 JSON')
+async function analyzeSqliteSource(): Promise<void> {
+  if (!legacyImportStore.sqliteDbPath.trim()) {
+    message.warning('请先填写旧项目 SQLite DB 路径')
     return
   }
 
   try {
-    const result = await legacyImportStore.analyze()
+    const result = await legacyImportStore.analyzeSqlite()
     message.success(`已识别：${result.sourceLabel}`)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
 }
 
-async function importSource(): Promise<void> {
-  if (!legacyImportStore.hasAnalysis) {
-    message.warning('请先识别旧数据类型')
+async function importSqliteSource(): Promise<void> {
+  if (!legacyImportStore.sqliteAnalysis) {
+    message.warning('请先分析旧 SQLite DB')
     return
   }
   if (legacyImportStore.selectedSections.length === 0) {
@@ -138,8 +140,8 @@ async function importSource(): Promise<void> {
   }
 
   try {
-    const result = await legacyImportStore.importData()
-    message.success(`旧数据已导入：${formatSections(result.sections)}`)
+    const result = await legacyImportStore.importSqlite()
+    message.success(`SQLite 数据已导入：${formatSections(result.sections)}`)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -218,8 +220,8 @@ async function importBackup(): Promise<void> {
         </div>
         <div class="data-center-progress-copy">
           <p class="eyebrow">本地数据协议</p>
-          <strong>备份与迁移控制台</strong>
-          <p>先识别旧项目数据，再选择导入模块；备份导出和覆盖恢复统一在同一条流程内确认。</p>
+          <strong>备份与 SQLite 导入</strong>
+          <p>先只读分析旧项目 DB，再选择模块导入；本地备份导出和覆盖恢复仍保留在同一控制台。</p>
         </div>
         <div class="data-center-progress-track">
           <span :style="{ width: `${backupProgress}%` }" />
@@ -234,10 +236,10 @@ async function importBackup(): Promise<void> {
         <template #header>
           <div class="card-title-row">
             <div>
-              <p class="eyebrow">旧项目迁移</p>
-              <strong>旧项目导入</strong>
+              <p class="eyebrow">旧项目 SQLite</p>
+              <strong>数据导入预览</strong>
             </div>
-            <NTag size="small" :bordered="false">识别</NTag>
+            <NTag size="small" :bordered="false">只读分析</NTag>
           </div>
         </template>
 
@@ -250,20 +252,30 @@ async function importBackup(): Promise<void> {
 
         <div class="data-center-panel-grid">
           <div class="data-center-editor">
-            <label class="appearance-modal-label">旧项目 JSON</label>
+            <label class="appearance-modal-label">旧项目 DB 路径</label>
             <NInput
-              :value="legacyImportStore.sourceJson"
-              type="textarea"
-              placeholder="粘贴旧项目总备份 JSON，或旧项目 Prompt 模板导出 JSON"
-              :autosize="{ minRows: 8, maxRows: 16 }"
-              @update:value="legacyImportStore.setSourceJson"
+              class="sqlite-path-input"
+              :value="legacyImportStore.sqliteDbPath"
+              placeholder="/Users/xrj/.dog_toolbox/doggy_toolbox.db"
+              @update:value="legacyImportStore.setSqliteDbPath"
             />
+            <section class="sqlite-path-note">
+              <NIcon :component="ServerOutline" />
+              <div>
+                <strong>默认读取本机旧库</strong>
+                <p>/Users/xrj/.dog_toolbox/doggy_toolbox.db</p>
+              </div>
+            </section>
             <div class="action-row">
-              <NButton type="primary" :loading="legacyImportStore.loading" @click="analyzeSource">
+              <NButton
+                type="primary"
+                :loading="legacyImportStore.loading"
+                @click="analyzeSqliteSource"
+              >
                 <template #icon>
                   <NIcon :component="DocumentTextOutline" />
                 </template>
-                识别旧数据类型
+                分析 SQLite DB
               </NButton>
             </div>
           </div>
@@ -276,23 +288,33 @@ async function importBackup(): Promise<void> {
                   识别结果
                 </strong>
                 <NTag
-                  v-if="legacyImportStore.analysis"
+                  v-if="legacyImportStore.sqliteAnalysis"
                   size="small"
                   :bordered="false"
                 >
-                  {{ legacyImportStore.analysis.sourceKind }}
+                  SQLite
                 </NTag>
               </div>
-              <div v-if="legacyImportStore.analysis" class="legacy-analysis">
+              <div v-if="legacyImportStore.sqliteAnalysis" class="legacy-analysis">
                 <div>
-                  <strong>{{ legacyImportStore.analysis.sourceLabel }}</strong>
+                  <strong>{{ legacyImportStore.sqliteAnalysis.sourceLabel }}</strong>
                   <p class="muted">
-                    可导入模块：{{ formatSections(legacyImportStore.analysis.availableSections) }}
+                    可导入模块：{{ formatSections(legacyImportStore.sqliteAnalysis.availableSections) }}
                   </p>
+                </div>
+                <div class="sqlite-table-list">
+                  <article
+                    v-for="table in legacyImportStore.sqliteAnalysis.tables"
+                    :key="table.name"
+                    class="sqlite-table-row"
+                  >
+                    <span>{{ table.name }}</span>
+                    <strong>{{ table.rows }}</strong>
+                  </article>
                 </div>
                 <div class="chip-list">
                   <span
-                    v-for="warning in legacyImportStore.analysis.warnings"
+                    v-for="warning in legacyImportStore.sqliteAnalysis.warnings"
                     :key="warning"
                     class="chip"
                   >
@@ -300,10 +322,10 @@ async function importBackup(): Promise<void> {
                   </span>
                 </div>
               </div>
-              <NEmpty v-else description="先识别一次旧 JSON，再决定导入哪些模块" />
+              <NEmpty v-else description="先只读分析旧 SQLite DB，再决定导入哪些模块" />
             </section>
 
-            <section v-if="legacyImportStore.analysis" class="data-center-insight-card data-center-risk-card">
+            <section v-if="legacyImportStore.sqliteAnalysis" class="data-center-insight-card data-center-risk-card">
               <div class="card-title-row">
                 <strong>
                   <NIcon :component="SwapHorizontalOutline" />
@@ -317,7 +339,7 @@ async function importBackup(): Promise<void> {
                 @update:value="updateLegacySections"
               />
               <p class="muted">
-                旧项目总备份会覆盖命令或凭证模块；旧 Prompt 导出会按分类名称和模板标题做合并导入。
+                SQLite 导入会按模块覆盖命令、凭证、Prompt 或 HTTP 集合。执行前请先在下方生成当前项目备份。
               </p>
               <div class="action-row data-center-inline-end">
                 <NTag size="small" :bordered="false" type="info">
@@ -326,7 +348,7 @@ async function importBackup(): Promise<void> {
                 <NPopconfirm
                   negative-text="取消"
                   positive-text="确认执行"
-                  @positive-click="importSource"
+                  @positive-click="importSqliteSource"
                 >
                   <template #trigger>
                     <NButton
@@ -335,10 +357,10 @@ async function importBackup(): Promise<void> {
                       :loading="legacyImportStore.loading"
                       :disabled="!legacyImportStore.canImport"
                     >
-                      导入识别出的模块
+                      导入选中模块
                     </NButton>
                   </template>
-                  导入会覆盖或合并新仓对应模块数据。请确认 JSON 来源可靠且当前数据已备份。
+                  导入会覆盖新仓对应模块数据。请确认 DB 来源可靠且当前数据已备份。
                 </NPopconfirm>
               </div>
             </section>
@@ -375,7 +397,7 @@ async function importBackup(): Promise<void> {
           <div class="card-title-row">
             <div>
               <p class="eyebrow">本地备份协议</p>
-              <strong>导入 / 备份 / 恢复</strong>
+              <strong>备份 / 数据导入</strong>
             </div>
             <NTag size="small" :bordered="false">可审计</NTag>
           </div>

@@ -28,7 +28,7 @@ import { useCommandsStore } from '@renderer/stores/commands'
  *
  * 真实调用链固定为：
  * UI -> commandsStore -> window.doggy(preload)
- * -> ipcMain.handle('commands:*') -> CommandService -> JsonFileRepository
+ * -> ipcMain.handle('commands:*') -> CommandService -> SQLite app_documents
  *
  * 这样分层后，页面层不直接接触文件系统或 Electron IPC 细节；
  * 输入清洗、默认分组兜底、排序和持久化规则都收口在主进程 service。
@@ -85,6 +85,8 @@ const isCommandEdit = computed(() => Boolean(commandForm.id))
 const moveTargetByCommandId = ref<Record<string, string>>({})
 const activeCommandId = ref('')
 const aiProvider = ref<AiProviderKind>('codex')
+const draggingTabId = ref('')
+const draggingCommandId = ref('')
 const activeCommand = computed(
   () =>
     commandsStore.visibleCommands.find((command) => command.id === activeCommandId.value) ??
@@ -187,27 +189,49 @@ async function explainCommandsWithAi(): Promise<void> {
   }
 }
 
-function rotateTabOrder(direction: 'left' | 'right', currentTabId: string): void {
+function startTabDrag(tabId: string): void {
+  draggingTabId.value = tabId
+}
+
+function finishTabDrag(): void {
+  draggingTabId.value = ''
+}
+
+function dropTab(targetTabId: string): void {
+  const sourceTabId = draggingTabId.value
+  if (!sourceTabId || sourceTabId === targetTabId) return
+
   const tabs = [...commandsStore.tabs]
-  const currentIndex = tabs.findIndex((tab) => tab.id === currentTabId)
-  if (currentIndex < 0) return
-  const targetIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1
-  if (targetIndex < 0 || targetIndex >= tabs.length) return
-  const [current] = tabs.splice(currentIndex, 1)
-  tabs.splice(targetIndex, 0, current)
+  const sourceIndex = tabs.findIndex((tab) => tab.id === sourceTabId)
+  const targetIndex = tabs.findIndex((tab) => tab.id === targetTabId)
+  if (sourceIndex < 0 || targetIndex < 0) return
+
+  const [source] = tabs.splice(sourceIndex, 1)
+  tabs.splice(targetIndex, 0, source)
   void commandsStore.reorderTabs(tabs.map((tab) => tab.id))
 }
 
-function rotateCommandOrder(direction: 'up' | 'down', command: CommandRecord): void {
-  const commands = commandsStore.commands.filter((item) => item.tabId === command.tabId)
-  const currentIndex = commands.findIndex((item) => item.id === command.id)
-  if (currentIndex < 0) return
-  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-  if (targetIndex < 0 || targetIndex >= commands.length) return
-  const [current] = commands.splice(currentIndex, 1)
-  commands.splice(targetIndex, 0, current)
+function startCommandDrag(commandId: string): void {
+  draggingCommandId.value = commandId
+}
+
+function finishCommandDrag(): void {
+  draggingCommandId.value = ''
+}
+
+function dropCommand(targetCommand: CommandRecord): void {
+  const sourceCommandId = draggingCommandId.value
+  if (!sourceCommandId || sourceCommandId === targetCommand.id) return
+
+  const commands = commandsStore.commands.filter((item) => item.tabId === targetCommand.tabId)
+  const sourceIndex = commands.findIndex((item) => item.id === sourceCommandId)
+  const targetIndex = commands.findIndex((item) => item.id === targetCommand.id)
+  if (sourceIndex < 0 || targetIndex < 0) return
+
+  const [source] = commands.splice(sourceIndex, 1)
+  commands.splice(targetIndex, 0, source)
   void commandsStore.reorderCommands({
-    tabId: command.tabId,
+    tabId: targetCommand.tabId,
     commandIds: commands.map((item) => item.id)
   })
 }
@@ -351,8 +375,16 @@ onMounted(() => {
           v-for="tab in tabOptions"
           :key="tab.id"
           class="tool-nav-item commands-tab-item"
-          :class="{ active: tab.id === commandsStore.activeTabId }"
+          :class="{
+            active: tab.id === commandsStore.activeTabId,
+            dragging: draggingTabId === tab.id
+          }"
           type="button"
+          draggable="true"
+          @dragstart="startTabDrag(tab.id)"
+          @dragover.prevent
+          @drop.prevent="dropTab(tab.id)"
+          @dragend="finishTabDrag"
           @click="commandsStore.setActiveTab(tab.id)"
         >
           <div>
@@ -360,34 +392,15 @@ onMounted(() => {
             <p>{{ tab.count }} 条命令</p>
           </div>
           <div class="list-order-actions">
-            <NButton
-              size="tiny"
-              quaternary
-              circle
-              :disabled="commandsStore.tabs[0]?.id === tab.id"
-              @click.stop="rotateTabOrder('left', tab.id)"
-            >
-              ↑
-            </NButton>
-            <NButton
-              size="tiny"
-              quaternary
-              circle
-              :disabled="commandsStore.tabs[commandsStore.tabs.length - 1]?.id === tab.id"
-              @click.stop="rotateTabOrder('right', tab.id)"
-            >
-              ↓
-            </NButton>
+            <span class="drag-handle" aria-hidden="true">⋮⋮</span>
             <NTag size="small" :bordered="false">{{ tab.count }}</NTag>
           </div>
         </button>
       </div>
 
-      <div class="commands-meta">
-        <strong>本地资料库</strong>
-        <NText depth="3">{{ commandsStore.storageFile || '等待初始化' }}</NText>
-        <strong>最近更新</strong>
-        <NText depth="3">{{ formatUpdatedAt(commandsStore.updatedAt) }}</NText>
+      <div class="commands-meta commands-meta--compact">
+        <strong>{{ formatUpdatedAt(commandsStore.updatedAt) }}</strong>
+        <NText depth="3">SQLite DB 已保存</NText>
       </div>
     </NCard>
 
@@ -454,12 +467,21 @@ onMounted(() => {
             v-for="command in commandsStore.visibleCommands"
             :key="command.id"
             class="command-row-card"
-            :class="{ active: activeCommand?.id === command.id }"
+            :class="{
+              active: activeCommand?.id === command.id,
+              dragging: draggingCommandId === command.id
+            }"
             type="button"
+            draggable="true"
+            @dragstart="startCommandDrag(command.id)"
+            @dragover.prevent
+            @drop.prevent="dropCommand(command)"
+            @dragend="finishCommandDrag"
             @click="activeCommandId = command.id"
           >
             <div class="command-row-main">
               <div class="command-row-top">
+                <span class="drag-handle command-drag-handle" aria-hidden="true">⋮⋮</span>
                 <span class="command-row-pill">{{ getTabName(command.tabId) }}</span>
                 <strong>{{ command.title }}</strong>
               </div>
@@ -495,30 +517,6 @@ onMounted(() => {
 
           <div class="action-row">
             <NButton size="small" secondary @click="copyCommand(activeCommand)">复制</NButton>
-            <NButton
-              size="small"
-              quaternary
-              :disabled="
-                commandsStore.commands.filter((item) => item.tabId === activeCommand.tabId)[0]
-                  ?.id === activeCommand.id
-              "
-              @click="rotateCommandOrder('up', activeCommand)"
-            >
-              上移
-            </NButton>
-            <NButton
-              size="small"
-              quaternary
-              :disabled="
-                commandsStore.commands.filter((item) => item.tabId === activeCommand.tabId)[
-                  commandsStore.commands.filter((item) => item.tabId === activeCommand.tabId)
-                    .length - 1
-                ]?.id === activeCommand.id
-              "
-              @click="rotateCommandOrder('down', activeCommand)"
-            >
-              下移
-            </NButton>
             <NButton size="small" secondary @click="openEditCommandModal(activeCommand)">
               编辑
             </NButton>

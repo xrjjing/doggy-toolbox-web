@@ -18,7 +18,7 @@ import type {
 } from '../../shared/ipc-contract'
 import { fillPromptTemplate, parsePromptVariables } from '../../shared/prompt-template-core'
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
-import { JsonFileRepository } from './json-repository'
+import { SqliteDocumentRepository } from './sqlite-document-repository'
 
 type StoredPromptState = {
   version: number
@@ -243,7 +243,9 @@ export class PromptService {
 
   constructor(rootDir: string) {
     this.paths = resolveAppDataPaths(rootDir)
-    this.repository = new JsonFileRepository<StoredPromptState>(
+    this.repository = new SqliteDocumentRepository<StoredPromptState>(
+      this.paths.files.database,
+      'prompts',
       this.paths.files.prompts,
       createDefaultState
     )
@@ -790,7 +792,7 @@ export class PromptService {
 
   private toModuleState(state: StoredPromptState): PromptModuleState {
     return {
-      storageFile: this.paths.files.prompts,
+      storageFile: this.paths.files.database,
       updatedAt: state.updatedAt,
       categories: sortCategories(state.categories),
       templates: sortTemplates(state.templates)

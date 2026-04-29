@@ -4,6 +4,7 @@ import type {
   HttpBatchExecuteResult,
   HttpCollection,
   HttpCollectionModuleState,
+  HttpCollectionReorderInput,
   HttpCollectionSaveInput,
   HttpEnvironment,
   HttpEnvironmentSaveInput,
@@ -162,6 +163,16 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
       await load()
       activeCollectionId.value = collection.id
       return collection
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function reorderCollections(input: HttpCollectionReorderInput): Promise<void> {
+    saving.value = true
+    try {
+      await window.doggy.reorderHttpCollections(input)
+      await load()
     } finally {
       saving.value = false
     }
@@ -367,6 +378,7 @@ export const useHttpCollectionsStore = defineStore('http-collections', () => {
     activeHistory,
     load,
     saveCollection,
+    reorderCollections,
     saveRequest,
     removeRequest,
     saveEnvironment,

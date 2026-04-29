@@ -8,6 +8,7 @@ export type AppDataPaths = {
   backupsDir: string
   aiSessionsDir: string
   files: {
+    database: string
     commands: string
     credentials: string
     prompts: string
@@ -30,6 +31,7 @@ export function resolveAppDataPaths(rootDir: string): AppDataPaths {
     backupsDir,
     aiSessionsDir,
     files: {
+      database: join(rootDir, 'doggy_toolbox_web.db'),
       commands: join(storageDir, 'commands.json'),
       credentials: join(storageDir, 'credentials.json'),
       prompts: join(storageDir, 'prompts.json'),

@@ -668,16 +668,16 @@ watch(activeCategory, (category) => {
         </template>
 
         <section class="tool-ai-assist">
-          <p class="muted">
-            把当前工具名、输入、结果和附加信息组织成 prompt，交给本机 Codex / Claude Code SDK
-            做结果解释、异常判断和下一步建议。
-          </p>
-
           <div class="tool-ai-toolbar">
-            <NRadioGroup v-model:value="aiProvider">
-              <NRadioButton value="codex">Codex SDK</NRadioButton>
-              <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
-            </NRadioGroup>
+            <div class="tool-ai-toolbar-copy">
+              <p class="muted">
+                用当前工具名、输入、结果和附加信息生成 prompt，交给本机 SDK 复核。
+              </p>
+              <NRadioGroup v-model:value="aiProvider">
+                <NRadioButton value="codex">Codex SDK</NRadioButton>
+                <NRadioButton value="claude-code">Claude Code SDK</NRadioButton>
+              </NRadioGroup>
+            </div>
             <div class="action-row">
               <NButton
                 type="primary"

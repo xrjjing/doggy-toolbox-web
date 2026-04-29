@@ -588,6 +588,10 @@ export type HttpCollectionSaveInput = {
   description?: string
 }
 
+export type HttpCollectionReorderInput = {
+  collectionIds: string[]
+}
+
 export type HttpRequestSaveInput = {
   id?: string
   collectionId?: string
@@ -762,7 +766,10 @@ export type BackupImportResult = {
   summary: BackupSummary
 }
 
-export type LegacyImportSourceKind = 'doggy-toolbox-backup' | 'doggy-toolbox-prompt-export'
+export type LegacyImportSourceKind =
+  | 'doggy-toolbox-backup'
+  | 'doggy-toolbox-prompt-export'
+  | 'doggy-toolbox-sqlite-db'
 
 export type LegacyImportAnalysis = {
   sourceKind: LegacyImportSourceKind
@@ -783,6 +790,25 @@ export type LegacyImportResult = {
   sections: BackupSectionKey[]
   summary: BackupSummary
   warnings: string[]
+}
+
+export type LegacySqliteImportAnalysis = {
+  sourceKind: 'doggy-toolbox-sqlite-db'
+  sourceLabel: string
+  dbPath: string
+  availableSections: BackupSectionKey[]
+  summary: BackupSummary
+  tables: Array<{
+    name: string
+    rows: number
+    mappedSection?: BackupSectionKey
+  }>
+  warnings: string[]
+}
+
+export type LegacySqliteImportInput = {
+  dbPath: string
+  sections?: BackupSectionKey[]
 }
 
 /**
@@ -818,6 +844,7 @@ export type BridgeApi = {
   deleteCredential: (credentialId: string) => Promise<{ ok: boolean }>
   getHttpCollectionsState: () => Promise<HttpCollectionModuleState>
   saveHttpCollection: (input: HttpCollectionSaveInput) => Promise<HttpCollection>
+  reorderHttpCollections: (input: HttpCollectionReorderInput) => Promise<{ ok: boolean }>
   saveHttpRequest: (input: HttpRequestSaveInput) => Promise<HttpRequestRecord>
   deleteHttpRequest: (requestId: string) => Promise<{ ok: boolean }>
   saveHttpEnvironment: (input: HttpEnvironmentSaveInput) => Promise<HttpEnvironment>
@@ -842,4 +869,6 @@ export type BridgeApi = {
   importBackup: (input: BackupImportInput) => Promise<BackupImportResult>
   analyzeLegacyImport: (json: string) => Promise<LegacyImportAnalysis>
   importLegacyData: (input: LegacyImportInput) => Promise<LegacyImportResult>
+  analyzeLegacySqliteImport: (dbPath: string) => Promise<LegacySqliteImportAnalysis>
+  importLegacySqliteData: (input: LegacySqliteImportInput) => Promise<LegacyImportResult>
 }

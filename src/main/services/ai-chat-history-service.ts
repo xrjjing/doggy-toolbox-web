@@ -11,7 +11,7 @@ import type {
   AiUsageSummary
 } from '../../shared/ipc-contract'
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
-import { JsonFileRepository } from './json-repository'
+import { SqliteDocumentRepository } from './sqlite-document-repository'
 
 /**
  * AI 历史文件的真实落盘结构。
@@ -197,7 +197,9 @@ export class AiChatHistoryService {
 
   constructor(rootDir: string) {
     this.paths = resolveAppDataPaths(rootDir)
-    this.repository = new JsonFileRepository<StoredAiChatHistoryState>(
+    this.repository = new SqliteDocumentRepository<StoredAiChatHistoryState>(
+      this.paths.files.database,
+      'aiChatSessions',
       this.paths.files.aiChatSessions,
       createDefaultState
     )
@@ -206,7 +208,7 @@ export class AiChatHistoryService {
   async getState(): Promise<AiChatHistoryState> {
     const state = await this.readState()
     return {
-      storageFile: this.paths.files.aiChatSessions,
+      storageFile: this.paths.files.database,
       updatedAt: state.updatedAt,
       sessions: state.sessions.map((session) => summarize(session))
     }

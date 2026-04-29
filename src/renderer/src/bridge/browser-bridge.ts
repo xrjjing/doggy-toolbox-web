@@ -35,6 +35,7 @@ import type {
   HttpBatchExecuteInput,
   HttpBatchExecuteResult,
   HttpCollection,
+  HttpCollectionReorderInput,
   HttpCollectionModuleState,
   HttpCollectionSaveInput,
   HttpEnvironment,
@@ -48,6 +49,8 @@ import type {
   LegacyImportAnalysis,
   LegacyImportInput,
   LegacyImportResult,
+  LegacySqliteImportAnalysis,
+  LegacySqliteImportInput,
   LocalRuntimeStatus,
   PromptCategory,
   PromptCategorySaveInput,
@@ -1197,6 +1200,21 @@ export function installBrowserBridge(): void {
       saveAll()
       return cloneJson(collection)
     },
+    async reorderHttpCollections(input: HttpCollectionReorderInput) {
+      const ids = new Set(input.collectionIds.map((id) => sanitizeText(id)).filter(Boolean))
+      let nextOrder = 0
+      state.httpCollections.collections = [
+        ...state.httpCollections.collections.filter((item) => ids.has(item.id)),
+        ...state.httpCollections.collections.filter((item) => !ids.has(item.id))
+      ].map((item) => ({
+        ...item,
+        order: nextOrder++,
+        updatedAt: nowIso()
+      }))
+      touchHttp()
+      saveAll()
+      return { ok: true }
+    },
     async saveHttpRequest(input: HttpRequestSaveInput) {
       const name = sanitizeText(input.name)
       if (!name) {
@@ -1938,6 +1956,36 @@ export function installBrowserBridge(): void {
         importedAt: nowIso(),
         sourceKind: analysis.sourceKind,
         sections,
+        summary: buildBackupSummary(state),
+        warnings: analysis.warnings
+      } satisfies LegacyImportResult
+    },
+    async analyzeLegacySqliteImport(dbPath: string) {
+      return {
+        sourceKind: 'doggy-toolbox-sqlite-db',
+        sourceLabel: '旧项目 SQLite 数据库',
+        dbPath,
+        availableSections: ['commands', 'credentials', 'prompts', 'httpCollections'],
+        summary: createEmptySummary(),
+        tables: [
+          { name: 'command_tabs', rows: 0, mappedSection: 'commands' },
+          { name: 'computer_commands', rows: 0, mappedSection: 'commands' },
+          { name: 'credentials', rows: 0, mappedSection: 'credentials' },
+          { name: 'prompt_categories', rows: 0, mappedSection: 'prompts' },
+          { name: 'prompt_templates', rows: 0, mappedSection: 'prompts' },
+          { name: 'http_collections', rows: 0, mappedSection: 'httpCollections' },
+          { name: 'http_environments', rows: 0, mappedSection: 'httpCollections' }
+        ],
+        warnings: ['浏览器开发桥无法读取本机 SQLite；请在 Electron 桌面端执行真实分析。']
+      } satisfies LegacySqliteImportAnalysis
+    },
+    async importLegacySqliteData(input: LegacySqliteImportInput) {
+      const analysis = await bridge.analyzeLegacySqliteImport(input.dbPath)
+      return {
+        importedAt: nowIso(),
+        sourceKind: 'doggy-toolbox-sqlite-db',
+        sections:
+          input.sections && input.sections.length > 0 ? input.sections : analysis.availableSections,
         summary: buildBackupSummary(state),
         warnings: analysis.warnings
       } satisfies LegacyImportResult

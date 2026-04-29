@@ -24,11 +24,13 @@ import type {
   CredentialSaveInput,
   HttpBatchExecuteInput,
   HttpClearHistoryInput,
+  HttpCollectionReorderInput,
   HttpCollectionSaveInput,
   HttpEnvironmentSaveInput,
   HttpExecuteRequestInput,
   HttpRequestSaveInput,
   LegacyImportInput,
+  LegacySqliteImportInput,
   PromptExportDocument,
   PromptExportInput,
   PromptImportInput,
@@ -93,6 +95,8 @@ const api: BridgeApi = {
   getHttpCollectionsState: () => ipcRenderer.invoke('http-collections:get-state'),
   saveHttpCollection: (input: HttpCollectionSaveInput) =>
     ipcRenderer.invoke('http-collections:save-collection', input),
+  reorderHttpCollections: (input: HttpCollectionReorderInput) =>
+    ipcRenderer.invoke('http-collections:reorder-collections', input),
   saveHttpRequest: (input: HttpRequestSaveInput) =>
     ipcRenderer.invoke('http-collections:save-request', input),
   deleteHttpRequest: (requestId: string) =>
@@ -134,7 +138,11 @@ const api: BridgeApi = {
   exportBackup: (input?: BackupExportInput) => ipcRenderer.invoke('backup:export', input),
   importBackup: (input: BackupImportInput) => ipcRenderer.invoke('backup:import', input),
   analyzeLegacyImport: (json: string) => ipcRenderer.invoke('legacy:analyze-import', json),
-  importLegacyData: (input: LegacyImportInput) => ipcRenderer.invoke('legacy:import', input)
+  importLegacyData: (input: LegacyImportInput) => ipcRenderer.invoke('legacy:import', input),
+  analyzeLegacySqliteImport: (dbPath: string) =>
+    ipcRenderer.invoke('legacy:analyze-sqlite-import', dbPath),
+  importLegacySqliteData: (input: LegacySqliteImportInput) =>
+    ipcRenderer.invoke('legacy:import-sqlite', input)
 }
 
 /**

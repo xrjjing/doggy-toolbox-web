@@ -5,7 +5,7 @@ import type {
   AiSettingsState
 } from '../../shared/ipc-contract'
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
-import { JsonFileRepository } from './json-repository'
+import { SqliteDocumentRepository } from './sqlite-document-repository'
 
 type StoredAiSettingsState = {
   version: number
@@ -90,7 +90,9 @@ export class AiSettingsService {
 
   constructor(rootDir: string) {
     this.paths = resolveAppDataPaths(rootDir)
-    this.repository = new JsonFileRepository<StoredAiSettingsState>(
+    this.repository = new SqliteDocumentRepository<StoredAiSettingsState>(
+      this.paths.files.database,
+      'aiSettings',
       this.paths.files.aiSettings,
       createDefaultState
     )
@@ -99,7 +101,7 @@ export class AiSettingsService {
   async getState(): Promise<AiSettingsState> {
     const state = await this.readState()
     return {
-      storageFile: this.paths.files.aiSettings,
+      storageFile: this.paths.files.database,
       updatedAt: state.updatedAt,
       settings: state.settings
     }
@@ -120,7 +122,7 @@ export class AiSettingsService {
     }))
 
     return {
-      storageFile: this.paths.files.aiSettings,
+      storageFile: this.paths.files.database,
       updatedAt: nextState.updatedAt,
       settings: nextState.settings
     }
@@ -142,7 +144,7 @@ export class AiSettingsService {
     await ensureAppDataLayout(this.paths)
     await this.repository.write(restored)
     return {
-      storageFile: this.paths.files.aiSettings,
+      storageFile: this.paths.files.database,
       updatedAt: restored.updatedAt,
       settings: restored.settings
     }

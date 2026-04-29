@@ -38,11 +38,13 @@ import type {
   CredentialSaveInput,
   HttpBatchExecuteInput,
   HttpClearHistoryInput,
+  HttpCollectionReorderInput,
   HttpCollectionSaveInput,
   HttpEnvironmentSaveInput,
   HttpExecuteRequestInput,
   HttpRequestSaveInput,
   LegacyImportInput,
+  LegacySqliteImportInput,
   PromptExportInput,
   PromptImportInput,
   PromptCategorySaveInput,
@@ -271,6 +273,7 @@ function registerIpc(): void {
   legacyImportService = new LegacyImportService({
     commandService,
     credentialService,
+    httpCollectionService,
     promptService
   })
 
@@ -348,6 +351,9 @@ function registerIpc(): void {
   ipcMain.handle('http-collections:save-collection', (_event, input: HttpCollectionSaveInput) =>
     httpCollectionService.saveCollection(input)
   )
+  ipcMain.handle('http-collections:reorder-collections', (_event, input: HttpCollectionReorderInput) =>
+    httpCollectionService.reorderCollections(input)
+  )
   ipcMain.handle('http-collections:save-request', (_event, input: HttpRequestSaveInput) =>
     httpCollectionService.saveRequest(input)
   )
@@ -421,6 +427,12 @@ function registerIpc(): void {
   )
   ipcMain.handle('legacy:import', (_event, input: LegacyImportInput) =>
     legacyImportService.import(input)
+  )
+  ipcMain.handle('legacy:analyze-sqlite-import', (_event, dbPath: string) =>
+    legacyImportService.analyzeSqlite(dbPath)
+  )
+  ipcMain.handle('legacy:import-sqlite', (_event, input: LegacySqliteImportInput) =>
+    legacyImportService.importSqlite(input)
   )
 }
 

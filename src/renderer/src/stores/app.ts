@@ -37,17 +37,17 @@ export function mapGlassOpacitySetting(percent: number): number {
 }
 
 /**
- * UI 缩放改成“55 档 = 正常基准”。
- * 这样保留向下缩小的空间，同时避免旧 100 档把页面放得过大。
+ * UI 缩放以“55 档 = 正常基准”保留旧设置语义，但扩大到 78%-122%。
+ * 之前 82%-112% 的范围太窄，很多页面只看到弹窗自身变化，主工作区体感不明显。
  */
 export function mapUiScaleSetting(percent: number): number {
   const bounded = Math.max(40, Math.min(100, percent))
   if (bounded <= 55) {
-    const normalized = 0.82 + ((bounded - 40) / 15) * 0.18
-    return Number(Math.max(0.82, Math.min(1, normalized)).toFixed(2))
+    const normalized = 0.78 + ((bounded - 40) / 15) * 0.22
+    return Number(Math.max(0.78, Math.min(1, normalized)).toFixed(2))
   }
-  const normalized = 1 + ((bounded - 55) / 45) * 0.12
-  return Number(Math.max(1, Math.min(1.12, normalized)).toFixed(2))
+  const normalized = 1 + ((bounded - 55) / 45) * 0.22
+  return Number(Math.max(1, Math.min(1.22, normalized)).toFixed(2))
 }
 
 /**
@@ -62,11 +62,11 @@ export function mapUiScaleDisplayPercent(percent: number): number {
  * 设置弹窗里输入的是用户看到的百分比，需要反算回内部档位。
  */
 export function resolveUiScaleDisplayPercent(percent: number): number {
-  const bounded = Math.max(82, Math.min(112, Math.round(percent)))
+  const bounded = Math.max(78, Math.min(122, Math.round(percent)))
   if (bounded <= 100) {
-    return Math.round(40 + ((bounded - 82) / 18) * 15)
+    return Math.round(40 + ((bounded - 78) / 22) * 15)
   }
-  return Math.round(55 + ((bounded - 100) / 12) * 45)
+  return Math.round(55 + ((bounded - 100) / 22) * 45)
 }
 
 /**

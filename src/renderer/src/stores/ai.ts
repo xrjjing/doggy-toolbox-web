@@ -228,6 +228,11 @@ export const useAiStore = defineStore('ai', () => {
     provider.value = value
   }
 
+  function clearActiveSession(): void {
+    activeSession.value = null
+    running.value = false
+  }
+
   /**
    * 页面卸载或切换场景时释放流监听，防止悬挂订阅继续接收事件。
    */
@@ -256,6 +261,7 @@ export const useAiStore = defineStore('ai', () => {
     cancelChat,
     setPrompt,
     setProvider,
+    clearActiveSession,
     disposeStream
   }
 })

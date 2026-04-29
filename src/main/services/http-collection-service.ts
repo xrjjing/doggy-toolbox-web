@@ -6,6 +6,7 @@ import type {
   HttpBody,
   HttpClearHistoryInput,
   HttpCollection,
+  HttpCollectionReorderInput,
   HttpExecuteRequestInput,
   HttpExecuteRequestResult,
   HttpExecutionHistoryRecord,
@@ -22,7 +23,7 @@ import type {
   HttpRequestSaveInput
 } from '../../shared/ipc-contract'
 import { ensureAppDataLayout, resolveAppDataPaths } from './app-data'
-import { JsonFileRepository } from './json-repository'
+import { SqliteDocumentRepository } from './sqlite-document-repository'
 
 type StoredHttpCollectionState = {
   version: number
@@ -457,7 +458,9 @@ export class HttpCollectionService {
 
   constructor(rootDir: string) {
     this.paths = resolveAppDataPaths(rootDir)
-    this.repository = new JsonFileRepository<StoredHttpCollectionState>(
+    this.repository = new SqliteDocumentRepository<StoredHttpCollectionState>(
+      this.paths.files.database,
+      'httpCollections',
       this.paths.files.httpCollections,
       createDefaultState
     )
@@ -516,6 +519,44 @@ export class HttpCollectionService {
     }
 
     return savedCollection
+  }
+
+  async reorderCollections(input: HttpCollectionReorderInput): Promise<{ ok: boolean }> {
+    const normalizedIds = Array.from(
+      new Set((input.collectionIds ?? []).map((id) => sanitizeText(id)).filter(Boolean))
+    )
+
+    await this.updateState((state) => {
+      const collectionMap = new Map(state.collections.map((collection) => [collection.id, collection]))
+      let nextOrder = 0
+
+      for (const collectionId of normalizedIds) {
+        const collection = collectionMap.get(collectionId)
+        if (!collection) continue
+        collectionMap.set(collectionId, {
+          ...collection,
+          order: nextOrder++,
+          updatedAt: nowIso()
+        })
+      }
+
+      for (const collection of sortCollections(state.collections)) {
+        if (normalizedIds.includes(collection.id)) continue
+        collectionMap.set(collection.id, {
+          ...collection,
+          order: nextOrder++,
+          updatedAt: nowIso()
+        })
+      }
+
+      return {
+        ...state,
+        updatedAt: nowIso(),
+        collections: sortCollections([...collectionMap.values()])
+      }
+    })
+
+    return { ok: true }
   }
 
   async saveRequest(input: HttpRequestSaveInput): Promise<HttpRequestRecord> {
@@ -915,7 +956,7 @@ export class HttpCollectionService {
 
   private toModuleState(state: StoredHttpCollectionState): HttpCollectionModuleState {
     return {
-      storageFile: this.paths.files.httpCollections,
+      storageFile: this.paths.files.database,
       defaultCollectionId: DEFAULT_COLLECTION_ID,
       updatedAt: state.updatedAt,
       collections: sortCollections(state.collections),

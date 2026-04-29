@@ -8,8 +8,8 @@ import { mapGlassOpacitySetting, mapUiScaleSetting, useAppStore } from '@rendere
 const appStore = useAppStore()
 const glassOpacity = computed(() => mapGlassOpacitySetting(appStore.appearance.glassOpacity))
 const uiScale = computed(() => mapUiScaleSetting(appStore.appearance.uiScale))
-const uiDensity = computed(() => Math.max(0.84, uiScale.value - 0.06))
-const uiFontScale = computed(() => Math.max(0.9, uiScale.value - 0.02))
+const uiDensity = computed(() => Math.max(0.78, Math.min(1.18, uiScale.value - 0.04)))
+const uiFontScale = computed(() => Math.max(0.84, Math.min(1.16, uiScale.value - 0.01)))
 const glassSurfaceAlpha = computed(() =>
   Number(Math.max(0.18, Math.min(0.84, glassOpacity.value * 0.92)).toFixed(3))
 )

@@ -4,9 +4,12 @@ import {
   NButton,
   NCollapseTransition,
   NEmpty,
+  NForm,
+  NFormItem,
   NIcon,
   NInput,
   NModal,
+  NSelect,
   NSlider,
   NRadioButton,
   NRadioGroup,
@@ -14,8 +17,12 @@ import {
   useMessage
 } from 'naive-ui'
 import {
+  AddOutline,
+  ChatboxOutline,
   ChevronDownOutline,
   ChevronUpOutline,
+  ImageOutline,
+  LibraryOutline,
   SettingsOutline,
   SparklesOutline,
   StopCircleOutline
@@ -23,15 +30,35 @@ import {
 import AiSettingsView from '@renderer/features/ai/AiSettingsView.vue'
 import { useAiSettingsStore } from '@renderer/stores/ai-settings'
 import { useAiStore } from '@renderer/stores/ai'
+import { usePromptsStore } from '@renderer/stores/prompts'
 import { markdownToHtml } from '@renderer/features/tools/utils/core-legacy'
+import { fillPromptTemplate } from '@shared/prompt-template-core'
+import type { PromptTemplate, PromptVariable } from '@shared/ipc-contract'
 
 const message = useMessage()
 const aiStore = useAiStore()
 const aiSettingsStore = useAiSettingsStore()
+const promptsStore = usePromptsStore()
 const showSettingsModal = ref(false)
+const templateModalVisible = ref(false)
 const reasoningDepth = ref(70)
 const expandedThinkingIds = ref<Set<string>>(new Set())
 const chatAreaRef = ref<HTMLElement | null>(null)
+const selectedTemplateId = ref('')
+const templateVariableValues = ref<Record<string, string>>({})
+
+const templateOptions = computed(() =>
+  promptsStore.templates.map((template) => ({
+    label: template.title,
+    value: template.id
+  }))
+)
+
+const selectedTemplate = computed(
+  () => promptsStore.templates.find((template) => template.id === selectedTemplateId.value) ?? null
+)
+
+const selectedTemplateVariables = computed(() => selectedTemplate.value?.variables ?? [])
 
 const providerLabel = computed(() =>
   aiStore.provider === 'codex' ? 'Codex SDK' : 'Claude Code SDK'
@@ -95,6 +122,18 @@ function formatUpdatedAt(value?: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
+function newConversation(): void {
+  aiStore.setPrompt('')
+  aiStore.clearActiveSession()
+  expandedThinkingIds.value = new Set()
+}
+
+async function selectSession(sessionId: string): Promise<void> {
+  await aiStore.loadSession(sessionId)
+  expandedThinkingIds.value = new Set()
+  await scrollChatToBottom()
+}
+
 async function startChat(): Promise<void> {
   try {
     await aiStore.startChat({ moduleId: 'ai-chat' })
@@ -127,6 +166,62 @@ function openSettingsModal(): void {
   showSettingsModal.value = true
 }
 
+async function openTemplateModal(): Promise<void> {
+  if (!promptsStore.hasLoaded) {
+    await promptsStore.load()
+  }
+  selectedTemplateId.value = promptsStore.templates[0]?.id ?? ''
+  hydrateTemplateVariables(selectedTemplate.value)
+  templateModalVisible.value = true
+}
+
+function hydrateTemplateVariables(template: PromptTemplate | null): void {
+  templateVariableValues.value = Object.fromEntries(
+    (template?.variables ?? []).map((variable) => [variable.name, variable.defaultValue])
+  )
+}
+
+function variableOptions(variable: PromptVariable): Array<{ label: string; value: string }> {
+  return variable.options.map((option) => ({ label: option, value: option }))
+}
+
+function normalizeTemplateValues(): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(templateVariableValues.value).map(([key, value]) => [key, String(value ?? '')])
+  )
+}
+
+function applyTemplateToPrompt(): void {
+  const template = selectedTemplate.value
+  if (!template) {
+    message.warning('请先选择一个 Prompt 模板')
+    return
+  }
+
+  const values = normalizeTemplateValues()
+  aiStore.setPrompt(fillPromptTemplate(template.content, values))
+  templateModalVisible.value = false
+  message.success('模板已填入 AI 输入框')
+
+  void promptsStore
+    .useTemplate({
+      templateId: template.id,
+      values
+    })
+    .then((result) => {
+      aiStore.setPrompt(result.content)
+    })
+    .catch((error) => {
+      message.warning(
+        `模板已填入，但使用次数记录失败：${error instanceof Error ? error.message : String(error)}`
+      )
+    })
+}
+
+function attachImagePlaceholder(): void {
+  message.info('图片入口已预留；当前本机 SDK 桥接仍按纯文本 messages 发送，暂不真实上传图片。')
+}
+
 async function scrollChatToBottom(): Promise<void> {
   await nextTick()
   const chatArea = chatAreaRef.value
@@ -142,6 +237,9 @@ onMounted(async () => {
   if (aiStore.sessions[0]) {
     await aiStore.loadSession(aiStore.sessions[0].id)
   }
+  if (!promptsStore.hasLoaded) {
+    await promptsStore.load()
+  }
   await scrollChatToBottom()
 })
 
@@ -155,6 +253,10 @@ watch(
     void scrollChatToBottom()
   }
 )
+
+watch(selectedTemplate, (template) => {
+  hydrateTemplateVariables(template)
+})
 </script>
 
 <template>
@@ -207,6 +309,41 @@ watch(
     </section>
 
     <div class="ai-chat-shell">
+      <aside class="ai-session-sidebar">
+        <div class="ai-session-head">
+          <div>
+            <p class="eyebrow">history</p>
+            <strong>会话记录</strong>
+          </div>
+          <NButton size="small" circle secondary title="新建会话" @click="newConversation">
+            <template #icon>
+              <NIcon :component="AddOutline" />
+            </template>
+          </NButton>
+        </div>
+
+        <div v-if="aiStore.sessions.length > 0" class="ai-session-list">
+          <button
+            v-for="session in aiStore.sessions"
+            :key="session.id"
+            class="ai-session-item"
+            :class="{ active: session.id === aiStore.activeSessionId }"
+            type="button"
+            @click="selectSession(session.id)"
+          >
+            <NIcon :component="ChatboxOutline" />
+            <div>
+              <strong>{{ session.title || '未命名会话' }}</strong>
+              <p>{{ session.preview || session.phase }}</p>
+              <span>{{ formatUpdatedAt(session.updatedAt) }}</span>
+            </div>
+          </button>
+        </div>
+        <div v-else class="ai-session-empty">
+          <NEmpty description="暂无会话记录" />
+        </div>
+      </aside>
+
       <section class="ai-chat-canvas ai-chat-canvas--wide">
         <div class="ai-runtime-strip">
           <div>
@@ -283,6 +420,16 @@ watch(
               @update:value="aiStore.setPrompt"
             />
             <div class="floating-input-actions">
+              <NButton circle secondary title="选择 Prompt 模板" @click="openTemplateModal">
+                <template #icon>
+                  <NIcon :component="LibraryOutline" />
+                </template>
+              </NButton>
+              <NButton circle secondary title="添加图片" @click="attachImagePlaceholder">
+                <template #icon>
+                  <NIcon :component="ImageOutline" />
+                </template>
+              </NButton>
               <NButton
                 class="floating-send-btn"
                 type="primary"
@@ -314,5 +461,49 @@ watch(
     class="ai-settings-modal"
   >
     <AiSettingsView />
+  </NModal>
+
+  <NModal
+    v-model:show="templateModalVisible"
+    preset="card"
+    title="选择 Prompt 模板"
+    class="form-modal ai-template-modal"
+  >
+    <NForm>
+      <NFormItem label="模板">
+        <NSelect
+          v-model:value="selectedTemplateId"
+          filterable
+          :options="templateOptions"
+          placeholder="选择要填入 AI 输入框的模板"
+        />
+      </NFormItem>
+      <NFormItem
+        v-for="variable in selectedTemplateVariables"
+        :key="variable.name"
+        :label="variable.name"
+      >
+        <NSelect
+          v-if="variable.type === 'select'"
+          v-model:value="templateVariableValues[variable.name]"
+          :options="variableOptions(variable)"
+        />
+        <NInput
+          v-else
+          v-model:value="templateVariableValues[variable.name]"
+          :placeholder="variable.defaultValue"
+        />
+      </NFormItem>
+      <div class="action-row modal-actions ai-template-actions">
+        <NButton secondary @click="templateModalVisible = false">取消</NButton>
+        <NButton
+          type="primary"
+          :disabled="!selectedTemplate"
+          @click.prevent.stop="applyTemplateToPrompt"
+        >
+          填入输入框
+        </NButton>
+      </div>
+    </NForm>
   </NModal>
 </template>

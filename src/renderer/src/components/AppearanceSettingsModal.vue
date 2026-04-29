@@ -166,20 +166,20 @@ onBeforeUnmount(() => {
               <NInputNumber
                 :value="mapUiScaleDisplayPercent(draft.uiScale)"
                 size="small"
-                :min="82"
-                :max="112"
+                :min="78"
+                :max="122"
                 :step="1"
                 :precision="0"
                 @update:value="updateUiScale"
               />
             </div>
-            <NSlider
-              :value="mapUiScaleDisplayPercent(draft.uiScale)"
-              :min="82"
-              :max="112"
-              :step="1"
-              @update:value="(uiScale) => patchDraft({ uiScale: resolveUiScaleDisplayPercent(uiScale) })"
-            />
+              <NSlider
+                :value="mapUiScaleDisplayPercent(draft.uiScale)"
+                :min="78"
+                :max="122"
+                :step="1"
+                @update:value="(uiScale) => patchDraft({ uiScale: resolveUiScaleDisplayPercent(uiScale) })"
+              />
           </div>
         </ZenPanel>
 

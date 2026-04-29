@@ -58,8 +58,8 @@ type RequestFormState = {
   method: HttpMethod
   url: string
   description: string
-  headersText: string
-  paramsText: string
+  headers: HttpKeyValue[]
+  params: HttpKeyValue[]
   bodyType: HttpBody['type']
   bodyContent: string
   authType: HttpAuth['type']
@@ -72,7 +72,7 @@ type RequestFormState = {
 type EnvironmentFormState = {
   id?: string
   name: string
-  variablesText: string
+  variables: HttpKeyValue[]
 }
 
 type CollectionImportFormat = 'postman' | 'openapi' | 'apifox'
@@ -99,6 +99,7 @@ const exportFormat = ref<ExportFormat>('curl')
 const aiProvider = ref<AiProviderKind>('codex')
 const httpRailTab = ref<'collections' | 'history'>('collections')
 const requestEditorTab = ref<'params' | 'headers' | 'body'>('params')
+const draggingCollectionId = ref('')
 const collectionForm = reactive<CollectionFormState>({
   id: '',
   name: '',
@@ -111,8 +112,8 @@ const requestForm = reactive<RequestFormState>({
   method: 'GET',
   url: '',
   description: '',
-  headersText: '',
-  paramsText: '',
+  headers: [],
+  params: [],
   bodyType: 'none',
   bodyContent: '',
   authType: 'none',
@@ -124,7 +125,7 @@ const requestForm = reactive<RequestFormState>({
 const environmentForm = reactive<EnvironmentFormState>({
   id: '',
   name: '',
-  variablesText: ''
+  variables: []
 })
 
 const methodOptions: Array<{ label: string; value: HttpMethod }> = [
@@ -229,31 +230,70 @@ function formatBytes(value: number): string {
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
-function parseKeyValues(text: string): Array<Partial<HttpKeyValue>> {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const enabled = !line.startsWith('#')
-      const normalizedLine = enabled ? line : line.slice(1).trim()
-      const separatorIndex = normalizedLine.indexOf(':')
-      if (separatorIndex < 0) {
-        return {
-          key: normalizedLine,
-          value: '',
-          enabled,
-          description: ''
-        }
-      }
+function createEmptyKeyValue(): HttpKeyValue {
+  return {
+    id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    key: '',
+    value: '',
+    enabled: true,
+    description: ''
+  }
+}
 
-      return {
-        key: normalizedLine.slice(0, separatorIndex).trim(),
-        value: normalizedLine.slice(separatorIndex + 1).trim(),
-        enabled,
-        description: ''
-      }
-    })
+function cloneKeyValues(values: HttpKeyValue[]): HttpKeyValue[] {
+  return values.length > 0 ? values.map((item) => ({ ...item })) : [createEmptyKeyValue()]
+}
+
+function addKeyValueRow(target: 'params' | 'headers'): void {
+  requestForm[target] = [...requestForm[target], createEmptyKeyValue()]
+}
+
+function removeKeyValueRow(target: 'params' | 'headers', rowId: string): void {
+  const rows = requestForm[target].filter((row) => row.id !== rowId)
+  requestForm[target] = rows.length > 0 ? rows : [createEmptyKeyValue()]
+}
+
+function addEnvironmentVariable(): void {
+  environmentForm.variables = [...environmentForm.variables, createEmptyKeyValue()]
+}
+
+function removeEnvironmentVariable(rowId: string): void {
+  const rows = environmentForm.variables.filter((row) => row.id !== rowId)
+  environmentForm.variables = rows.length > 0 ? rows : [createEmptyKeyValue()]
+}
+
+function normalizeKeyValueRows(rows: HttpKeyValue[]): Array<Partial<HttpKeyValue>> {
+  return rows
+    .map((row) => ({
+      id: row.id.startsWith('draft-') ? undefined : row.id,
+      key: row.key,
+      value: row.value,
+      enabled: row.enabled,
+      description: row.description
+    }))
+    .filter((row) => row.key.trim() || row.value.trim())
+}
+
+function startCollectionDrag(collectionId: string): void {
+  draggingCollectionId.value = collectionId
+}
+
+function finishCollectionDrag(): void {
+  draggingCollectionId.value = ''
+}
+
+function dropCollection(targetCollectionId: string): void {
+  const sourceCollectionId = draggingCollectionId.value
+  if (!sourceCollectionId || sourceCollectionId === targetCollectionId) return
+
+  const collections = [...httpStore.collections]
+  const sourceIndex = collections.findIndex((collection) => collection.id === sourceCollectionId)
+  const targetIndex = collections.findIndex((collection) => collection.id === targetCollectionId)
+  if (sourceIndex < 0 || targetIndex < 0) return
+
+  const [source] = collections.splice(sourceIndex, 1)
+  collections.splice(targetIndex, 0, source)
+  void httpStore.reorderCollections({ collectionIds: collections.map((collection) => collection.id) })
 }
 
 function openCreateCollectionModal(): void {
@@ -279,8 +319,8 @@ function openCreateRequestModal(): void {
   requestForm.method = 'GET'
   requestForm.url = ''
   requestForm.description = ''
-  requestForm.headersText = ''
-  requestForm.paramsText = ''
+  requestForm.headers = [createEmptyKeyValue()]
+  requestForm.params = [createEmptyKeyValue()]
   requestForm.bodyType = 'none'
   requestForm.bodyContent = ''
   requestForm.authType = 'none'
@@ -299,8 +339,8 @@ function openEditRequestModal(request: HttpRequestRecord): void {
   requestForm.method = request.method
   requestForm.url = request.url
   requestForm.description = request.description
-  requestForm.headersText = serializeKeyValues(request.headers)
-  requestForm.paramsText = serializeKeyValues(request.params)
+  requestForm.headers = cloneKeyValues(request.headers)
+  requestForm.params = cloneKeyValues(request.params)
   requestForm.bodyType = request.body.type
   requestForm.bodyContent = request.body.content
   requestForm.authType = request.auth.type
@@ -325,14 +365,14 @@ function syncEditorFromActiveRequest(): void {
 function openCreateEnvironmentModal(): void {
   environmentForm.id = ''
   environmentForm.name = ''
-  environmentForm.variablesText = ''
+  environmentForm.variables = [createEmptyKeyValue()]
   environmentModalVisible.value = true
 }
 
 function openEditEnvironmentModal(environment: HttpEnvironment): void {
   environmentForm.id = environment.id
   environmentForm.name = environment.name
-  environmentForm.variablesText = serializeKeyValues(environment.variables)
+  environmentForm.variables = cloneKeyValues(environment.variables)
   environmentModalVisible.value = true
 }
 
@@ -359,8 +399,8 @@ async function submitRequest(): Promise<void> {
       method: requestForm.method,
       url: requestForm.url,
       description: requestForm.description,
-      headers: parseKeyValues(requestForm.headersText),
-      params: parseKeyValues(requestForm.paramsText),
+      headers: normalizeKeyValueRows(requestForm.headers),
+      params: normalizeKeyValueRows(requestForm.params),
       body: {
         type: requestForm.bodyType,
         content: requestForm.bodyContent
@@ -416,7 +456,7 @@ async function submitEnvironment(): Promise<void> {
     await httpStore.saveEnvironment({
       id: environmentForm.id || undefined,
       name: environmentForm.name,
-      variables: parseKeyValues(environmentForm.variablesText)
+      variables: normalizeKeyValueRows(environmentForm.variables)
     })
     environmentModalVisible.value = false
     message.success(isEditingEnvironment.value ? '环境已更新' : '环境已创建')
@@ -677,8 +717,9 @@ watch(
   }
 )
 
-onMounted(() => {
-  void httpStore.load()
+onMounted(async () => {
+  await httpStore.load()
+  syncEditorFromActiveRequest()
   if (!aiSettingsStore.hasLoaded) {
     void aiSettingsStore.load()
   }
@@ -708,16 +749,24 @@ onMounted(() => {
                 >
                   <button
                     class="tool-nav-item http-collection-item"
-                    :class="{ active: collection.id === httpStore.activeCollectionId }"
+                    :class="{
+                      active: collection.id === httpStore.activeCollectionId,
+                      dragging: draggingCollectionId === collection.id
+                    }"
                     type="button"
+                    draggable="true"
+                    @dragstart="startCollectionDrag(collection.id)"
+                    @dragover.prevent
+                    @drop.prevent="dropCollection(collection.id)"
+                    @dragend="finishCollectionDrag"
                     @click="httpStore.setActiveCollection(collection.id)"
                   >
                     <div>
                       <strong class="http-tree-title">
+                        <span class="drag-handle http-drag-handle" aria-hidden="true">⋮⋮</span>
                         <span class="http-folder-glyph" aria-hidden="true" />
                         {{ collection.name }}
                       </strong>
-                      <p>{{ collection.description || '暂无描述' }}</p>
                     </div>
                     <NTag size="small" :bordered="false">
                       {{ httpStore.countByCollection(collection.id) }}
@@ -785,10 +834,8 @@ onMounted(() => {
         </NTabs>
 
         <div class="http-rail-footer">
-          <strong>工作区快照</strong>
-          <NText depth="3">集合 {{ stats.collections }} · 请求 {{ stats.requests }}</NText>
-          <NText depth="3">环境 {{ stats.environments }} · 历史 {{ stats.history }}</NText>
-          <NText depth="3">{{ httpStore.storageFile || '等待初始化' }}</NText>
+          <strong>{{ stats.collections }} 个集合 · {{ stats.requests }} 个请求</strong>
+          <NText depth="3">{{ stats.environments }} 环境 · {{ stats.history }} 历史</NText>
           <NButton size="small" secondary @click="openEditCollectionModal">编辑当前集合</NButton>
         </div>
       </NCard>
@@ -843,6 +890,7 @@ onMounted(() => {
                 placeholder="选择环境变量集"
                 @update:value="httpStore.setSelectedEnvironment"
               />
+              <NButton secondary @click="openCreateEnvironmentModal">管理环境</NButton>
               <NSelect
                 v-model:value="aiProvider"
                 :options="[
@@ -905,20 +953,46 @@ onMounted(() => {
               </div>
               <NTabs v-model:value="requestEditorTab" type="segment" animated class="http-editor-tabs">
                 <NTabPane name="params" tab="Params">
-                  <NInput
-                    v-model:value="requestForm.paramsText"
-                    type="textarea"
-                    :autosize="{ minRows: 8, maxRows: 14 }"
-                    placeholder="一行一个键值，例如：page: 1"
-                  />
+                  <div class="http-kv-form">
+                    <div
+                      v-for="row in requestForm.params"
+                      :key="row.id"
+                      class="http-kv-row"
+                    >
+                      <label class="http-kv-toggle">
+                        <input v-model="row.enabled" type="checkbox" />
+                      </label>
+                      <NInput v-model:value="row.key" placeholder="参数名，例如 page" />
+                      <NInput v-model:value="row.value" placeholder="值，例如 1" />
+                      <NButton size="small" secondary @click="removeKeyValueRow('params', row.id)">
+                        删除
+                      </NButton>
+                    </div>
+                    <NButton size="small" secondary @click="addKeyValueRow('params')">
+                      新增参数
+                    </NButton>
+                  </div>
                 </NTabPane>
                 <NTabPane name="headers" tab="Headers">
-                  <NInput
-                    v-model:value="requestForm.headersText"
-                    type="textarea"
-                    :autosize="{ minRows: 8, maxRows: 14 }"
-                    placeholder="一行一个键值，例如：Authorization: Bearer {{token}}"
-                  />
+                  <div class="http-kv-form">
+                    <div
+                      v-for="row in requestForm.headers"
+                      :key="row.id"
+                      class="http-kv-row"
+                    >
+                      <label class="http-kv-toggle">
+                        <input v-model="row.enabled" type="checkbox" />
+                      </label>
+                      <NInput v-model:value="row.key" placeholder="Header，例如 Authorization" />
+                      <NInput v-model:value="row.value" placeholder="值，例如 Bearer {{token}}" />
+                      <NButton size="small" secondary @click="removeKeyValueRow('headers', row.id)">
+                        删除
+                      </NButton>
+                    </div>
+                    <NButton size="small" secondary @click="addKeyValueRow('headers')">
+                      新增 Header
+                    </NButton>
+                  </div>
                 </NTabPane>
                 <NTabPane name="body" tab="Body / JSON">
                   <div class="http-body-toolbar">
@@ -1199,20 +1273,38 @@ onMounted(() => {
         />
       </NFormItem>
       <NFormItem label="Headers">
-        <NInput
-          v-model:value="requestForm.headersText"
-          type="textarea"
-          :autosize="{ minRows: 4, maxRows: 8 }"
-          placeholder="一行一个键值，例如：Authorization: Bearer {{token}}"
-        />
+        <div class="http-kv-form http-kv-form--modal">
+          <div v-for="row in requestForm.headers" :key="row.id" class="http-kv-row">
+            <label class="http-kv-toggle">
+              <input v-model="row.enabled" type="checkbox" />
+            </label>
+            <NInput v-model:value="row.key" placeholder="Header，例如 Authorization" />
+            <NInput v-model:value="row.value" placeholder="值，例如 Bearer {{token}}" />
+            <NButton size="small" secondary @click="removeKeyValueRow('headers', row.id)">
+              删除
+            </NButton>
+          </div>
+          <NButton size="small" secondary @click="addKeyValueRow('headers')">
+            新增 Header
+          </NButton>
+        </div>
       </NFormItem>
       <NFormItem label="Params">
-        <NInput
-          v-model:value="requestForm.paramsText"
-          type="textarea"
-          :autosize="{ minRows: 3, maxRows: 8 }"
-          placeholder="一行一个键值，例如：page: 1"
-        />
+        <div class="http-kv-form http-kv-form--modal">
+          <div v-for="row in requestForm.params" :key="row.id" class="http-kv-row">
+            <label class="http-kv-toggle">
+              <input v-model="row.enabled" type="checkbox" />
+            </label>
+            <NInput v-model:value="row.key" placeholder="参数名，例如 page" />
+            <NInput v-model:value="row.value" placeholder="值，例如 1" />
+            <NButton size="small" secondary @click="removeKeyValueRow('params', row.id)">
+              删除
+            </NButton>
+          </div>
+          <NButton size="small" secondary @click="addKeyValueRow('params')">
+            新增参数
+          </NButton>
+        </div>
       </NFormItem>
       <NFormItem label="Body 类型">
         <NSelect v-model:value="requestForm.bodyType" :options="bodyTypeOptions" />
@@ -1269,12 +1361,19 @@ onMounted(() => {
         <NInput v-model:value="environmentForm.name" placeholder="例如：本地 / 测试 / 生产" />
       </NFormItem>
       <NFormItem label="变量">
-        <NInput
-          v-model:value="environmentForm.variablesText"
-          type="textarea"
-          :autosize="{ minRows: 6, maxRows: 12 }"
-          placeholder="一行一个变量，例如：baseUrl: https://api.example.com"
-        />
+        <div class="http-kv-form http-env-variable-form">
+          <div v-for="row in environmentForm.variables" :key="row.id" class="http-kv-row">
+            <label class="http-kv-toggle">
+              <input v-model="row.enabled" type="checkbox" />
+            </label>
+            <NInput v-model:value="row.key" placeholder="变量名，例如 baseUrl" />
+            <NInput v-model:value="row.value" placeholder="变量值，例如 https://api.example.com" />
+            <NButton size="small" secondary @click="removeEnvironmentVariable(row.id)">
+              删除
+            </NButton>
+          </div>
+          <NButton size="small" secondary @click="addEnvironmentVariable">新增变量</NButton>
+        </div>
       </NFormItem>
       <div class="action-row modal-actions">
         <NButton secondary @click="environmentModalVisible = false">取消</NButton>
