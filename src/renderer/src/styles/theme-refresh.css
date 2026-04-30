@@ -9014,6 +9014,104 @@ html[data-theme='dark'] .credentials-detail-surface .secret-mask--detail {
   }
 }
 
+/* 2026-04-29: Credential vault horizontal tiles with in-place detail expansion. */
+.credentials-shell {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.credentials-vault {
+  display: block !important;
+}
+
+.credentials-tile-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+  gap: 12px !important;
+  align-items: start !important;
+}
+
+.vault-tile {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  align-content: start;
+}
+
+.vault-tile > .vault-row {
+  width: 100%;
+}
+
+.vault-tile.active > .vault-row {
+  max-width: 100%;
+}
+
+.vault-tile > .credentials-detail-surface {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vault-tile .vault-row-secret .secret-mask {
+  max-width: 118px;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  letter-spacing: 0.18em !important;
+}
+
+.vault-tile .credentials-detail-surface .secret-mask--detail {
+  letter-spacing: 0 !important;
+}
+
+.vault-tile .credential-fields,
+.credential-tile-detail-fields {
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+  margin-bottom: 0 !important;
+}
+
+.vault-tile .credential-secret-row,
+.credential-tile-detail-row {
+  grid-template-columns: minmax(34px, auto) minmax(0, 1fr) auto !important;
+  min-width: 0 !important;
+}
+
+.vault-tile .credential-secret-row strong,
+.credential-detail-value {
+  display: block !important;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  letter-spacing: 0 !important;
+  scrollbar-width: thin;
+}
+
+.vault-tile .credentials-detail-head > div {
+  min-width: 0;
+}
+
+.vault-tile .credentials-detail-head .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .credentials-tile-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .vault-tile.active > .vault-row,
+  .vault-tile > .credentials-detail-surface {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
 /* 2026-04-28 Phase D: HTTP collection drag sorting and key/value editor. */
 .http-collection-item {
   min-height: 48px !important;
@@ -9451,4 +9549,50 @@ body,
   .prompt-editor-modal .prompt-editor-grid {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* 2026-04-29: Final credential detail guard for lazy route CSS order. */
+.credentials-tile-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+  gap: 12px !important;
+  align-items: start !important;
+}
+
+.credentials-tile-grid .vault-tile {
+  min-width: 0 !important;
+  align-self: start !important;
+}
+
+.credentials-tile-grid .vault-tile > .credentials-detail-surface {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.credentials-tile-grid .vault-tile .credential-fields,
+.credential-tile-detail-fields {
+  grid-template-columns: 1fr !important;
+  margin-bottom: 0 !important;
+}
+
+.credentials-tile-grid .vault-tile .credential-secret-row,
+.credential-tile-detail-row {
+  grid-template-columns: minmax(34px, auto) minmax(0, 1fr) auto !important;
+  min-width: 0 !important;
+}
+
+.credentials-tile-grid .vault-tile .credential-detail-value,
+.credential-detail-value {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  letter-spacing: 0 !important;
 }

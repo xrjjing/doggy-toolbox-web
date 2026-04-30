@@ -85,7 +85,6 @@ const thinkingPreview = computed(() => {
 
 const visibleMessages = computed(() => {
   const sessionMessages = aiStore.activeSession?.messages ?? []
-  const draft = aiStore.prompt.trim()
   const bubbles = sessionMessages
     .filter((item) => item.role !== 'system')
     .map((item, index) => ({
@@ -95,16 +94,6 @@ const visibleMessages = computed(() => {
       html: markdownToHtml(item.content),
       thinking: ''
     }))
-
-  if (draft && !aiStore.activeSession) {
-    bubbles.push({
-      id: 'draft-user',
-      role: 'user',
-      content: draft,
-      html: markdownToHtml(draft),
-      thinking: ''
-    })
-  }
 
   if (aiStore.output.trim()) {
     bubbles.push({
@@ -148,7 +137,7 @@ async function deleteSession(sessionId: string): Promise<void> {
 async function startChat(): Promise<void> {
   try {
     await aiStore.startChat({ moduleId: 'ai-chat' })
-    expandedThinkingIds.value = new Set(['assistant-output'])
+    expandedThinkingIds.value = new Set()
   } catch (error) {
     aiStore.running = false
     message.error(error instanceof Error ? error.message : String(error))
@@ -434,7 +423,8 @@ watch(selectedTemplate, (template) => {
               <pre
                 v-if="item.role === 'assistant' && item.thinking"
                 class="stream-output is-thinking ai-thinking-output ai-thinking-output--message"
-              >{{ item.thinking }}</pre>
+                >{{ item.thinking }}</pre
+              >
             </NCollapseTransition>
           </article>
         </div>
@@ -487,12 +477,7 @@ watch(selectedTemplate, (template) => {
     </div>
   </div>
 
-  <NModal
-    v-model:show="showSettingsModal"
-    preset="card"
-    title="AI 设置"
-    class="ai-settings-modal"
-  >
+  <NModal v-model:show="showSettingsModal" preset="card" title="AI 设置" class="ai-settings-modal">
     <AiSettingsView />
   </NModal>
 

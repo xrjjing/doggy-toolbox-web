@@ -188,9 +188,6 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
-    if (is.dev) {
-      mainWindow?.webContents.openDevTools({ mode: 'detach', activate: false })
-    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -279,6 +276,13 @@ function registerIpc(): void {
 
   // Runtime / AI
   ipcMain.handle('runtime:get-info', () => getRuntimeInfo())
+  ipcMain.handle('developer:open-devtools', () => {
+    if (!mainWindow) {
+      return { ok: false }
+    }
+    mainWindow.webContents.openDevTools({ mode: 'detach', activate: true })
+    return { ok: true }
+  })
   ipcMain.handle('appearance:apply', (_event, input: AppAppearance) => {
     currentAppearance = normalizeAppearance(input)
     if (mainWindow) {
@@ -354,8 +358,9 @@ function registerIpc(): void {
   ipcMain.handle('http-collections:save-collection', (_event, input: HttpCollectionSaveInput) =>
     httpCollectionService.saveCollection(input)
   )
-  ipcMain.handle('http-collections:reorder-collections', (_event, input: HttpCollectionReorderInput) =>
-    httpCollectionService.reorderCollections(input)
+  ipcMain.handle(
+    'http-collections:reorder-collections',
+    (_event, input: HttpCollectionReorderInput) => httpCollectionService.reorderCollections(input)
   )
   ipcMain.handle('http-collections:save-request', (_event, input: HttpRequestSaveInput) =>
     httpCollectionService.saveRequest(input)

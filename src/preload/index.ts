@@ -48,6 +48,7 @@ import type {
  */
 const api: BridgeApi = {
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:get-info'),
+  openDeveloperTools: () => ipcRenderer.invoke('developer:open-devtools'),
   applyAppearance: (appearance: AppAppearance) =>
     ipcRenderer.invoke('appearance:apply', appearance),
   getAiChatHistoryState: (): Promise<AiChatHistoryState> =>

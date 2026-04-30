@@ -15,6 +15,7 @@ import { NIcon, NSwitch } from 'naive-ui'
 import {
   ChatbubblesOutline,
   ChevronBackOutline,
+  CodeSlashOutline,
   ContrastOutline,
   GlobeOutline,
   KeyOutline,
@@ -28,11 +29,7 @@ import {
   TerminalOutline,
   SunnyOutline
 } from '@vicons/ionicons5'
-import {
-  cloneAppearance,
-  useAppStore,
-  type AppAppearance
-} from '@renderer/stores/app'
+import { cloneAppearance, useAppStore, type AppAppearance } from '@renderer/stores/app'
 import { useToolSearchStore } from '@renderer/stores/tool-search'
 
 const GlobalSearchModal = defineAsyncComponent(
@@ -149,6 +146,20 @@ function confirmAppearanceModal(appearance: AppAppearance): void {
 function toggleSidebar(): void {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
 }
+
+async function openDeveloperTools(): Promise<void> {
+  try {
+    const result = await window.doggy.openDeveloperTools()
+    if (result.ok) {
+      message.success('开发者工具已打开')
+    } else {
+      message.warning('当前窗口暂时无法打开开发者工具')
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    message.error(`打开开发者工具失败：${reason}`)
+  }
+}
 </script>
 
 <template>
@@ -251,6 +262,12 @@ function toggleSidebar(): void {
               <NIcon :component="OptionsOutline" />
             </template>
             外观设置
+          </ZenButton>
+          <ZenButton class="window-action" variant="secondary" @click="openDeveloperTools">
+            <template #icon>
+              <NIcon :component="CodeSlashOutline" />
+            </template>
+            开发者工具
           </ZenButton>
           <ZenButton class="window-action" variant="secondary" @click="appStore.loadRuntimeInfo()">
             <template #icon>

@@ -781,6 +781,10 @@ export function installBrowserBridge(): void {
     async getRuntimeInfo() {
       return createDefaultRuntimeInfo()
     },
+    async openDeveloperTools() {
+      console.info('浏览器开发模式请使用浏览器自带开发者工具')
+      return { ok: false }
+    },
     async applyAppearance(appearance: AppAppearance) {
       writeStorage(APPEARANCE_KEY, appearance)
       return { ok: true }

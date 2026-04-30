@@ -817,6 +817,7 @@ export type LegacySqliteImportInput = {
  */
 export type BridgeApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>
+  openDeveloperTools: () => Promise<{ ok: boolean }>
   applyAppearance: (appearance: AppAppearance) => Promise<{ ok: boolean }>
   getAiChatHistoryState: () => Promise<AiChatHistoryState>
   getAiChatSession: (sessionId: string) => Promise<AiChatSessionRecord | null>

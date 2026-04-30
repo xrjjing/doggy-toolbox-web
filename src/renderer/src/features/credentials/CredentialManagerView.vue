@@ -45,8 +45,8 @@ const credentialsStore = useCredentialsStore()
 const modalVisible = ref(false)
 const importModalVisible = ref(false)
 const importText = ref('')
-// 仅控制当前页面“是否展示明文密码”，不会写回 store，也不会修改持久化记录。
-const revealedIds = ref(new Set<string>())
+// 仅控制当前页面“是否临时隐藏明文密码”，不会写回 store，也不会修改持久化记录。
+const hiddenPasswordIds = ref(new Set<string>())
 // 表单保持字符串态，提交时再映射为 CredentialSaveInput，便于与输入框交互保持一致。
 const form = reactive<CredentialFormState>({
   id: '',
@@ -69,22 +69,24 @@ const stats = computed(() => ({
 const isEdit = computed(() => Boolean(form.id))
 const activeCredentialId = ref('')
 const draggingCredentialId = ref('')
-const activeCredential = computed(
-  () =>
-    credentialsStore.visibleCredentials.find((credential) => credential.id === activeCredentialId.value) ??
-    credentialsStore.visibleCredentials[0] ??
-    null
-)
 
 watch(
   () => credentialsStore.visibleCredentials.map((credential) => credential.id).join('|'),
   () => {
-    if (!credentialsStore.visibleCredentials.some((credential) => credential.id === activeCredentialId.value)) {
-      activeCredentialId.value = credentialsStore.visibleCredentials[0]?.id ?? ''
+    if (
+      !credentialsStore.visibleCredentials.some(
+        (credential) => credential.id === activeCredentialId.value
+      )
+    ) {
+      activeCredentialId.value = ''
     }
   },
   { immediate: true }
 )
+
+function toggleActiveCredential(credentialId: string): void {
+  activeCredentialId.value = activeCredentialId.value === credentialId ? '' : credentialId
+}
 
 function formatUpdatedAt(value: string): string {
   if (!value) return '等待首次保存'
@@ -97,19 +99,19 @@ function maskPassword(value: string): string {
   return '•'.repeat(Math.min(Math.max(value.length, 6), 18))
 }
 
-function isRevealed(id: string): boolean {
-  return revealedIds.value.has(id)
+function isPasswordVisible(id: string): boolean {
+  return !hiddenPasswordIds.value.has(id)
 }
 
 // Set 需要整体替换为新实例，才能稳定触发 Vue 对集合变更的响应式更新。
-function toggleReveal(id: string): void {
-  const next = new Set(revealedIds.value)
+function togglePasswordVisibility(id: string): void {
+  const next = new Set(hiddenPasswordIds.value)
   if (next.has(id)) {
     next.delete(id)
   } else {
     next.add(id)
   }
-  revealedIds.value = next
+  hiddenPasswordIds.value = next
 }
 
 // 复制账号/密码属于纯 renderer 行为：输入是当前卡片值，输出是系统剪贴板文本。
@@ -231,7 +233,11 @@ onMounted(() => {
           <div class="commands-toolbar-copy">
             <p class="eyebrow">凭证保险库</p>
             <strong>{{ stats.visible }} 条可见凭证</strong>
-            <span>{{ stats.total }} 条总记录 · {{ stats.secretEncoding }}</span>
+            <span>
+              {{ stats.total }} 条总记录 · {{ stats.secretEncoding }} · SQLite DB · 最近更新：{{
+                formatUpdatedAt(credentialsStore.updatedAt)
+              }}
+            </span>
           </div>
           <NInput
             :value="credentialsStore.search"
@@ -251,92 +257,104 @@ onMounted(() => {
       </NCard>
 
       <div v-if="credentialsStore.visibleCredentials.length > 0" class="credentials-vault">
-        <section class="credentials-list-panel">
-          <button
+        <section class="credentials-list-panel credentials-tile-grid">
+          <article
             v-for="credential in credentialsStore.visibleCredentials"
             :key="credential.id"
-            class="vault-row"
-            :class="{
-              active: activeCredential?.id === credential.id,
-              dragging: draggingCredentialId === credential.id
-            }"
-            type="button"
+            class="vault-tile"
+            :class="{ active: activeCredentialId === credential.id }"
             draggable="true"
             @dragstart="startCredentialDrag(credential.id)"
             @dragover.prevent
             @drop.prevent="dropCredential(credential)"
             @dragend="finishCredentialDrag"
-            @click="activeCredentialId = credential.id"
           >
-            <div class="vault-row-main">
-              <span class="drag-handle credential-drag-handle" aria-hidden="true">⋮⋮</span>
-              <div class="vault-row-icon">{{ credential.service.slice(0, 1).toUpperCase() }}</div>
-              <div>
-                <strong>{{ credential.service }}</strong>
-                <p>{{ credential.url || credential.account || '未填写 URL / 账号' }}</p>
-              </div>
-            </div>
-            <div class="vault-row-secret">
-              <span class="secret-mask">{{ maskPassword(credential.password) }}</span>
-            </div>
-          </button>
-        </section>
-
-        <section v-if="activeCredential" class="credentials-detail-surface">
-          <div class="credentials-detail-head">
-            <div>
-              <p class="eyebrow">凭证明细</p>
-              <strong>{{ activeCredential.service }}</strong>
-              <p class="muted">{{ activeCredential.url || '未填写 URL' }}</p>
-            </div>
-            <span class="vault-index-pill">#{{ activeCredential.order + 1 }}</span>
-          </div>
-
-          <div class="credential-fields credential-fields--compact">
-            <div class="credential-secret-row">
-              <NText depth="3">账号</NText>
-              <strong>{{ activeCredential.account || '未填写' }}</strong>
-              <NButton size="tiny" secondary @click="copyText(activeCredential.account, '账号')">
-                复制
-              </NButton>
-            </div>
-            <div class="credential-secret-row">
-              <NText depth="3">密码</NText>
-              <strong class="secret-mask secret-mask--detail">{{
-                isRevealed(activeCredential.id)
-                  ? activeCredential.password || '未填写'
-                  : maskPassword(activeCredential.password)
-              }}</strong>
-              <NButton size="tiny" secondary @click="copyText(activeCredential.password, '密码')">
-                复制
-              </NButton>
-            </div>
-          </div>
-
-          <div v-if="activeCredential.extra.length > 0" class="chip-list credential-extra">
-            <NTimeline size="medium">
-              <NTimelineItem v-for="line in activeCredential.extra" :key="line" type="info">
-                {{ line }}
-              </NTimelineItem>
-            </NTimeline>
-          </div>
-
-          <div class="action-row">
-            <NButton size="small" secondary @click="toggleReveal(activeCredential.id)">
-              {{ isRevealed(activeCredential.id) ? '隐藏' : '显示' }}
-            </NButton>
-            <NButton size="small" secondary @click="openEditModal(activeCredential)">编辑</NButton>
-            <NPopconfirm
-              negative-text="取消"
-              positive-text="确认删除"
-              @positive-click="deleteCredential(activeCredential.id)"
+            <button
+              class="vault-row"
+              :class="{
+                active: activeCredentialId === credential.id,
+                dragging: draggingCredentialId === credential.id
+              }"
+              type="button"
+              @click="toggleActiveCredential(credential.id)"
             >
-              <template #trigger>
-                <NButton size="small" tertiary type="error">删除</NButton>
-              </template>
-              删除这条凭证记录后不会自动进入备份，确定继续？
-            </NPopconfirm>
-          </div>
+              <div class="vault-row-main">
+                <span class="drag-handle credential-drag-handle" aria-hidden="true">⋮⋮</span>
+                <div class="vault-row-icon">{{ credential.service.slice(0, 1).toUpperCase() }}</div>
+                <div>
+                  <strong>{{ credential.service }}</strong>
+                  <p>{{ credential.url || credential.account || '未填写 URL / 账号' }}</p>
+                </div>
+              </div>
+              <div class="vault-row-secret">
+                <span class="secret-mask">{{ maskPassword(credential.password) }}</span>
+              </div>
+            </button>
+
+            <section v-if="activeCredentialId === credential.id" class="credentials-detail-surface">
+              <div class="credentials-detail-head">
+                <div>
+                  <p class="eyebrow">凭证明细</p>
+                  <strong>{{ credential.service }}</strong>
+                  <p class="muted">{{ credential.url || '未填写 URL' }}</p>
+                </div>
+                <span class="vault-index-pill">#{{ credential.order + 1 }}</span>
+              </div>
+
+              <div class="credential-fields credential-fields--compact credential-tile-detail-fields">
+                <div class="credential-secret-row credential-tile-detail-row">
+                  <NText depth="3">账号</NText>
+                  <strong class="credential-detail-value" :title="credential.account">
+                    {{ credential.account || '未填写' }}
+                  </strong>
+                  <NButton size="tiny" secondary @click="copyText(credential.account, '账号')">
+                    复制
+                  </NButton>
+                </div>
+                <div class="credential-secret-row credential-tile-detail-row">
+                  <NText depth="3">密码</NText>
+                  <strong
+                    class="secret-mask secret-mask--detail credential-detail-value"
+                    :title="credential.password"
+                  >
+                    {{
+                      isPasswordVisible(credential.id)
+                        ? credential.password || '未填写'
+                        : maskPassword(credential.password)
+                    }}
+                  </strong>
+                  <NButton size="tiny" secondary @click="copyText(credential.password, '密码')">
+                    复制
+                  </NButton>
+                </div>
+              </div>
+
+              <div v-if="credential.extra.length > 0" class="chip-list credential-extra">
+                <NTimeline size="medium">
+                  <NTimelineItem v-for="line in credential.extra" :key="line" type="info">
+                    {{ line }}
+                  </NTimelineItem>
+                </NTimeline>
+              </div>
+
+              <div class="action-row">
+                <NButton size="small" secondary @click="togglePasswordVisibility(credential.id)">
+                  {{ isPasswordVisible(credential.id) ? '隐藏密码' : '显示密码' }}
+                </NButton>
+                <NButton size="small" secondary @click="openEditModal(credential)">编辑</NButton>
+                <NPopconfirm
+                  negative-text="取消"
+                  positive-text="确认删除"
+                  @positive-click="deleteCredential(credential.id)"
+                >
+                  <template #trigger>
+                    <NButton size="small" tertiary type="error">删除</NButton>
+                  </template>
+                  删除这条凭证记录后不会自动进入备份，确定继续？
+                </NPopconfirm>
+              </div>
+            </section>
+          </article>
         </section>
       </div>
 
@@ -348,12 +366,6 @@ onMounted(() => {
         </NEmpty>
       </NCard>
     </div>
-
-    <aside class="credentials-meta-card credentials-meta-card--compact">
-      <span>SQLite DB</span>
-      <p>凭证已保存到当前项目数据库</p>
-      <small>最近更新：{{ formatUpdatedAt(credentialsStore.updatedAt) }}</small>
-    </aside>
   </div>
 
   <NModal

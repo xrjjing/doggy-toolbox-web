@@ -200,9 +200,8 @@ export const useAiStore = defineStore('ai', () => {
     const messagesToSend = aiSettingsStore.buildMessages(rawPrompt)
 
     try {
-      // 输入框里保留用户原始内容；系统提示只拼接到真正发送给 SDK 的 prompt 里。
-      prompt.value = rawPrompt
       provider.value = providerToUse
+      prompt.value = ''
       running.value = true
       // 每次新开会话前先解除旧订阅，避免重复监听导致同一事件被处理多次。
       unsubscribe?.()
@@ -217,6 +216,7 @@ export const useAiStore = defineStore('ai', () => {
       await loadHistory()
       return result.sessionId
     } catch (error) {
+      prompt.value = rawPrompt
       running.value = false
       throw error
     }
